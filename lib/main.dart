@@ -1,5 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:google_sign_in/google_sign_in.dart';
 
 void main() {
   runApp(const MyApp());
@@ -42,6 +44,14 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  // Keep track of number of builds.
+  int numBuilds = 0;
+
+  final _googleSignIn = GoogleSignIn(
+    scopes: <String>['https://www.googleapis.com/auth/spreadsheets'],
+  );
+
+
   @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
@@ -50,6 +60,9 @@ class _MyHomePageState extends State<MyHomePage> {
     // The Flutter framework has been optimized to make rerunning build methods
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
+
+    numBuilds += 1;
+
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
     return Scaffold(
@@ -87,6 +100,8 @@ class _MyHomePageState extends State<MyHomePage> {
                       style: TextStyle(fontSize: 24),
                     ),
                     Text('100min  3N', style: TextStyle(fontSize: 24)),
+                    Text('Number of builds: $numBuilds',
+                        style: TextStyle(fontSize: 24, color: Colors.yellow)),
                   ],
                 ),
                 Column(
