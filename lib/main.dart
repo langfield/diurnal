@@ -2,11 +2,29 @@ import 'dart:math';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:googleapis/sheets/v4.dart' as sheets;
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:google_sign_in_dartio/google_sign_in_dartio.dart';
-import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:gsheets/gsheets.dart';
+
+const _credentials = r'''
+{
+  "type": "service_account",
+  "project_id": "",
+  "private_key_id": "",
+  "private_key": "",
+  "client_email": "",
+  "client_id": "",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": ""
+}
+''';
+
+/// Your spreadsheet id
+///
+/// It can be found in the link to your spreadsheet -
+/// link looks like so https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit#gid=0
+/// [YOUR_SPREADSHEET_ID] in the path is the id your need
+const _spreadsheetId = '';
 
 void main() {
   runApp(const MyApp());
@@ -18,12 +36,6 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    bool isDesktop = Theme.of(context).platform == TargetPlatform.linux;
-
-    // Try dartio sign in.
-    if (isDesktop) {
-      GoogleSignInDart.register(clientId: '');
-    }
 
     return MaterialApp(
       home: const MyHomePage(),
@@ -59,34 +71,14 @@ class _MyHomePageState extends State<MyHomePage> {
   // Keep track of number of builds.
   int numBuilds = 0;
 
-  final _googleSignIn = GoogleSignIn(
-    scopes: <String>[sheets.SheetsApi.spreadsheetsScope],
-  );
-
-  Future<void> _handleGetSheet() async {
-    var client = await _googleSignIn.authenticatedClient();
-    print('The client: $client');
-    var httpClient = client!;
+  void getSheet() async {
+    // init GSheets
+    final gsheets = GSheets(_credentials);
+    // fetch spreadsheet by its id
+    final ss = await gsheets.spreadsheet(_spreadsheetId);
+    // get worksheet by its title
+    var sheet = ss.worksheetByTitle('Sheet1');
   }
-
-  GoogleSignInAccount? _currentUser;
-
-  // Initialize the state of the app.
-  @override
-  void initState() {
-    super.initState();
-
-    _googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) {
-      setState(() {
-        _currentUser = account;
-      });
-      if (_currentUser != null) {
-        _handleGetSheet();
-      }
-    });
-    _googleSignIn.signIn();
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -154,7 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 TextButton(
-                  onPressed: _handleGetSheet,
+                  onPressed: getSheet,
                   child: const Text('PASS',
                       style: TextStyle(fontSize: 24, color: Colors.white)),
                 ),
