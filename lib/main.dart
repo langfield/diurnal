@@ -1,7 +1,12 @@
 import 'dart:math';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:google_sign_in_dartio/google_sign_in_dartio.dart';
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,6 +18,13 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    bool isDesktop = Theme.of(context).platform == TargetPlatform.linux;
+
+    // Try dartio sign in.
+    if (isDesktop) {
+      GoogleSignInDart.register(clientId: '');
+    }
+
     return MaterialApp(
       home: const MyHomePage(),
       theme: new ThemeData(
@@ -48,8 +60,32 @@ class _MyHomePageState extends State<MyHomePage> {
   int numBuilds = 0;
 
   final _googleSignIn = GoogleSignIn(
-    scopes: <String>['https://www.googleapis.com/auth/spreadsheets'],
+    scopes: <String>[sheets.SheetsApi.spreadsheetsScope],
   );
+
+  Future<void> _handleGetSheet() async {
+    var client = await _googleSignIn.authenticatedClient();
+    print('The client: $client');
+    var httpClient = client!;
+  }
+
+  GoogleSignInAccount? _currentUser;
+
+  // Initialize the state of the app.
+  @override
+  void initState() {
+    super.initState();
+
+    _googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) {
+      setState(() {
+        _currentUser = account;
+      });
+      if (_currentUser != null) {
+        _handleGetSheet();
+      }
+    });
+    _googleSignIn.signIn();
+  }
 
 
   @override
@@ -118,7 +154,7 @@ class _MyHomePageState extends State<MyHomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 TextButton(
-                  onPressed: null,
+                  onPressed: _handleGetSheet,
                   child: const Text('PASS',
                       style: TextStyle(fontSize: 24, color: Colors.white)),
                 ),
