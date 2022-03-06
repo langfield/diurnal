@@ -1,0 +1,52 @@
+Let's talk about screens. When the user gets a notification, it contains the
+following data:
+- Title
+- Weight
+- Minutes
+- Start time
+
+Then, they click the notification, and they're brought to the app. Our first
+priority is collecting measurements. So they're brought to a screen that
+prompts them with several buttons to select what they did during the last
+session. We also want to be able to measure when a task is completed early, or
+when other things were done in a block that were unplanned. So there should
+eventually be functionality for typing in how long the task took, and adding
+additional completed tasks. Maybe there are a couple tap-to-select options for
+likely completion times (assuming the completion time is less than the time
+allocated for the block).
+
+But right now, we only want the minimal feature set necessary. We want a
+program similar to the Erlang ticket system.
+
+So we'll have a screen that prompts you with the data given above in the
+notification, but this time for the previous task, and asks if you completed
+that block, yes or no. So just a blank screen with the data and two buttons,
+yes/no. Very simple. Maybe the time left as well.
+
+Here's a visual:
+
+
+Brush.+Floss.+Tongue.+Mouthwash.
+(Review 100 cards.)
+0/100min 3N          21:35 UTC+0
+
+
+      pass            fail
+
+
+             00:35
+
+
+
+At any point, when the user opens the app, they'll be presented with this
+screen. If they have already completed the block that's currently due, they'll
+see the prompt for the next block.
+
+Won't fix
+=========
+- No screen that shows the whole day, or other blocks besides the current
+  prompt.
+- No timer until start of next block for when you've completed something early.
+- No editing.
+- No recording how long a block actually took (yet).
+- Timer doesn't turn different colors when time is low.
