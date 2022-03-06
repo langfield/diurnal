@@ -26,15 +26,13 @@ yes/no. Very simple. Maybe the time left as well.
 Here's a visual:
 
 
-Brush.+Floss.+Tongue.+Mouthwash.
-(Review 100 cards.)
-0/100min 3N          21:35 UTC+0
+Brush.+Floss.+Tongue.+Mouthwash.          21:35 -> 23:15 UTC+0
+0/100min 3N
+
+                  pass            fail
 
 
-      pass            fail
-
-
-             00:35
+                         00:35
 
 
 
@@ -50,3 +48,5 @@ Won't fix
 - No editing.
 - No recording how long a block actually took (yet).
 - Timer doesn't turn different colors when time is low.
+- All text is the same size.
+- No padding between rows.

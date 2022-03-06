@@ -86,15 +86,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       'Brush.+Floss.+Tongue.+Mouthwash.',
                       style: TextStyle(fontSize: 24),
                     ),
-                    Text('(Review 100 cards).',
-                        style: TextStyle(fontSize: 18)),
-                    Text('0/100min  3N', style: TextStyle(fontSize: 16)),
+                    Text('100min  3N', style: TextStyle(fontSize: 24)),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
-                    Text('21:35 UTC+0', style: TextStyle(fontSize: 24))
+                    Text('21:35 -> 23:15 UTC+0', style: TextStyle(fontSize: 24))
                   ],
                 ),
               ],
@@ -120,9 +118,7 @@ class _MyHomePageState extends State<MyHomePage> {
             // Time remaining.
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text('00:35', style: TextStyle(fontSize: 50))
-              ],
+              children: <Widget>[Text('00:35', style: TextStyle(fontSize: 24))],
             ),
           ],
         ),
