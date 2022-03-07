@@ -4,6 +4,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:diurnal/SECRETS.dart' as SECRETS;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// CONSTANTS
 
 /// Your spreadsheet id
 ///
@@ -11,19 +16,37 @@ import 'package:diurnal/SECRETS.dart' as SECRETS;
 /// link looks like so https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit#gid=0
 /// [YOUR_SPREADSHEET_ID] in the path is the id your need
 const _spreadsheetId = '';
+const KEY = 'PRIVATE_KEY';
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// FUNCTIONS
+
+// Run the main app.
 void main() {
   runApp(const MyApp());
 }
 
+// Authenticate with google and get a spreadsheet.
+void getSheet(String credentials) async {
+  final gsheets = GSheets(credentials);
+  final ss = await gsheets.spreadsheet(_spreadsheetId);
+  var sheet = ss.worksheetByTitle('Sheet1');
+  return;
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// WIDGET
+// The main app, top-level widget.
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
-  // This widget is the root of your application.
+  // Build the main application, and set the global theme.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: const MyCustomForm(),
+      home: const PrivateKeyFormRoute(),
       theme: new ThemeData(
         scaffoldBackgroundColor: const Color.fromRGBO(0, 0, 0, 1.0),
         textTheme: Theme.of(context).textTheme.apply(
@@ -36,87 +59,69 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key}) : super(key: key);
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+// WIDGET
+class BlockDataRoute extends StatefulWidget {
+  const BlockDataRoute({Key? key}) : super(key: key);
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
+  // Set the state of the route.
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<BlockDataRoute> createState() => _BlockDataRouteState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  // Keep track of number of builds.
+// STATE
+class _BlockDataRouteState extends State<BlockDataRoute> {
   int numBuilds = 0;
 
-  void getSheet() async {
-    // init GSheets
-    final gsheets = GSheets(SECRETS.credentials);
-    // fetch spreadsheet by its id
-    final ss = await gsheets.spreadsheet(_spreadsheetId);
-    // get worksheet by its title
-    var sheet = ss.worksheetByTitle('Sheet1');
-  }
-
+  // Build the state widget.
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-
     numBuilds += 1;
 
+    // Dimensions of screen for setting padding.
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
+
+    // Scaffold themed with the global theme set in ``MyApp``.
     return Scaffold(
+
+      // Pad all content with a margin.
       body: Padding(
         padding: EdgeInsets.all(0.2 * min(width, height)),
+
+        // Main column containing several centered rows (block, buttons, timer).
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-
           mainAxisAlignment: MainAxisAlignment.center,
-
           children: <Widget>[
-            // Block information.
+
+            // Block row.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+
+                // Title, properties, number of builds.
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+
+                    // Block title.
                     Text(
                       'Brush.+Floss.+Tongue.+Mouthwash.',
                       style: TextStyle(fontSize: 24),
                     ),
+
+                    // Block duration and weight.
                     Text('100min  3N', style: TextStyle(fontSize: 24)),
+
+                    // Debug number of builds.
                     Text('Number of builds: $numBuilds',
                         style: TextStyle(fontSize: 24, color: Colors.yellow)),
                   ],
                 ),
+
+                // Start and end time.
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
@@ -131,7 +136,7 @@ class _MyHomePageState extends State<MyHomePage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 TextButton(
-                  onPressed: getSheet,
+                  onPressed: () => getSheet(''),
                   child: const Text('PASS',
                       style: TextStyle(fontSize: 24, color: Colors.white)),
                 ),
@@ -155,30 +160,59 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-// Define a custom Form widget.
-class MyCustomForm extends StatefulWidget {
-  const MyCustomForm({Key? key}) : super(key: key);
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// WIDGET
+// Form for prompting user to enter private key.
+class PrivateKeyFormRoute extends StatefulWidget {
+  const PrivateKeyFormRoute({Key? key}) : super(key: key);
 
   @override
-  MyCustomFormState createState() {
-    return MyCustomFormState();
+  PrivateKeyFormRouteState createState() {
+    return PrivateKeyFormRouteState();
   }
 }
 
-// Define a corresponding State class.
-// This class holds data related to the form.
-class MyCustomFormState extends State<MyCustomForm> {
+
+void storageDemo(FlutterSecureStorage storage, BuildContext context) async {
+  // Read value
+  String? value = await storage.read(key: KEY);
+  if (value != null) {
+    print('Found existing private key.');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BlockDataRoute()),
+    );
+    return;
+  }
+  print("Couldn't find private key.");
+}
+
+// STATE
+class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   // Create a global key that uniquely identifies the Form widget
   // and allows validation of the form.
   final _formKey = GlobalKey<FormState>();
+  final storage = new FlutterSecureStorage();
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+
+    // Check for existing private key.
+    storageDemo(storage, context);
+
     // Build a Form widget using the _formKey created above.
     final width = MediaQuery.of(context).size.width;
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 0.3 * width),
+        padding: EdgeInsets.symmetric(horizontal: 0.2 * width),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
@@ -189,10 +223,20 @@ class MyCustomFormState extends State<MyCustomForm> {
                 // The validator receives the text that the user has entered.
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter some text';
+                    return 'Empty private key';
                   }
-                  return null;
+                  try {
+                    String escaped = value.replaceAll('\n', '\\n');
+                    String credentials = SECRETS.credentials.replaceAll('@@@@@@', escaped);
+                    final _ = GSheets(credentials);
+                    return null;
+                  } on ArgumentError catch(e) {
+                    print('Caught error: $e');
+                    return 'Bad private key';
+                  }
+                  return 'FATAL: error not caught; please report this';
                 },
+                controller: controller,
                 style: TextStyle(
                   fontSize: 20,
                 ),
@@ -201,29 +245,36 @@ class MyCustomFormState extends State<MyCustomForm> {
                 decoration: const InputDecoration(
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
-                    borderSide: const BorderSide(color: Color.fromRGBO(255,255,255,1.0), width: 2.0),
+                    borderSide: const BorderSide(
+                        color: Color.fromRGBO(255, 255, 255, 1.0), width: 2.0),
                   ),
                   enabledBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
-                    borderSide: const BorderSide(color: Color.fromRGBO(255,255,255,0.7), width: 2.0),
+                    borderSide: const BorderSide(
+                        color: Color.fromRGBO(255, 255, 255, 0.7), width: 2.0),
                   ),
                   hintText: 'Service account private key',
-                  hintStyle: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.5)),
+                  hintStyle:
+                      TextStyle(color: Color.fromRGBO(255, 255, 255, 0.5)),
                   floatingLabelBehavior: FloatingLabelBehavior.never,
                 ),
               ),
             ),
+
             TextButton(
               onPressed: () {
-
-                // Validate returns true if the form is valid, or false otherwise.
-                // If the form is valid, display a snackbar. In the real world,
-                // you'd often call a server or save the information in a database.
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Processing Data')),
-                );
+                final privateKey = controller.text;
+                if (_formKey.currentState!.validate()) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const BlockDataRoute()),
+                  );
+                } else {
+                  print('Failed to validate input: $privateKey');
+                }
               },
-              child: const Text('Submit', style: TextStyle(fontSize: 24, color: Colors.white)),
+              child: const Text('Submit',
+                  style: TextStyle(fontSize: 24, color: Colors.white)),
             ),
           ],
         ),
