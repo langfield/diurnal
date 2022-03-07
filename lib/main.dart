@@ -3,21 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:gsheets/gsheets.dart';
-
-const _credentials = r'''
-{
-  "type": "service_account",
-  "project_id": "",
-  "private_key_id": "",
-  "private_key": "",
-  "client_email": "",
-  "client_id": "",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": ""
-}
-''';
+import 'package:diurnal/SECRETS.dart' as SECRETS;
 
 /// Your spreadsheet id
 ///
@@ -73,7 +59,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void getSheet() async {
     // init GSheets
-    final gsheets = GSheets(_credentials);
+    final gsheets = GSheets(SECRETS.credentials);
     // fetch spreadsheet by its id
     final ss = await gsheets.spreadsheet(_spreadsheetId);
     // get worksheet by its title
