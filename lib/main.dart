@@ -22,9 +22,8 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-
     return MaterialApp(
-      home: const MyHomePage(),
+      home: const MyCustomForm(),
       theme: new ThemeData(
         scaffoldBackgroundColor: const Color.fromRGBO(0, 0, 0, 1.0),
         textTheme: Theme.of(context).textTheme.apply(
@@ -148,6 +147,83 @@ class _MyHomePageState extends State<MyHomePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[Text('00:35', style: TextStyle(fontSize: 24))],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Define a custom Form widget.
+class MyCustomForm extends StatefulWidget {
+  const MyCustomForm({Key? key}) : super(key: key);
+
+  @override
+  MyCustomFormState createState() {
+    return MyCustomFormState();
+  }
+}
+
+// Define a corresponding State class.
+// This class holds data related to the form.
+class MyCustomFormState extends State<MyCustomForm> {
+  // Create a global key that uniquely identifies the Form widget
+  // and allows validation of the form.
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  Widget build(BuildContext context) {
+    // Build a Form widget using the _formKey created above.
+    final width = MediaQuery.of(context).size.width;
+    return Scaffold(
+      body: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 0.3 * width),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Form(
+              key: _formKey,
+              child: TextFormField(
+
+                // The validator receives the text that the user has entered.
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter some text';
+                  }
+                  return null;
+                },
+                style: TextStyle(
+                  fontSize: 20,
+                ),
+                maxLines: 20,
+                cursorColor: Colors.white,
+                decoration: const InputDecoration(
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(0.0)),
+                    borderSide: const BorderSide(color: Color.fromRGBO(255,255,255,1.0), width: 2.0),
+                  ),
+                  enabledBorder: const OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(0.0)),
+                    borderSide: const BorderSide(color: Color.fromRGBO(255,255,255,0.7), width: 2.0),
+                  ),
+                  hintText: 'Service account private key',
+                  hintStyle: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.5)),
+                  floatingLabelBehavior: FloatingLabelBehavior.never,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+
+                // Validate returns true if the form is valid, or false otherwise.
+                // If the form is valid, display a snackbar. In the real world,
+                // you'd often call a server or save the information in a database.
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Processing Data')),
+                );
+              },
+              child: const Text('Submit', style: TextStyle(fontSize: 24, color: Colors.white)),
             ),
           ],
         ),
