@@ -131,16 +131,33 @@ bool isDone({required List<Cell> row}) {
   return false;
 }
 
-/// Return empty list if there are no blocks with future end times.
-Future<List<Cell>> getFirstIncompleteBlockWithEndTimeInFuture(
-    {required FlutterSecureStorage storage, required DateTime now}) async {
-  // Get private key, validate it, and get spreadsheet object.
-  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
+Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
   String? privateKey = await storage.read(key: KEY);
-  if (!isValidPrivateKey(privateKey: privateKey)) return [];
+  if (!isValidPrivateKey(privateKey: privateKey)) return null;
   privateKey = privateKey!;
   String credentials = getCredentialsFromPrivateKey(privateKey: privateKey);
   final gsheets = GSheets(credentials);
+  return gsheets;
+}
+
+Widget consoleMessage({required String text}) {
+  return Scaffold(body: Text(text, style: TextStyle(fontSize: 24)));
+}
+
+/// Return empty list if there are no blocks with future end times.
+Future<List<Cell>> getFirstIncompleteBlockWithEndTimeInFuture(
+    {required GSheets gsheets,
+    required DateTime now,
+    required List<Cell> lastBlock,
+    required DateTime lastBlockFetchTime}) async {
+  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
+
+  // Crude caching.
+  if (lastBlockFetchTime.add(Duration(minutes: 1)).isAfter(now)) {
+    print('Using cached block');
+    return lastBlock;
+  }
+
   final ss = await gsheets.spreadsheet(SECRETS.ssid);
 
   // Get Sheet1.
@@ -159,13 +176,10 @@ Future<List<Cell>> getFirstIncompleteBlockWithEndTimeInFuture(
       count: DAY_HEIGHT);
 
   final nonEmptyRows = rows.where((row) => !hasEmptyFields(row: row)).toList();
-  logger.d('Nonempty blocks:');
-  logger.d(nonEmptyRows);
 
   final nonEmptyIncompleteRows =
       nonEmptyRows.where((row) => !isDone(row: row)).toList();
-  logger.d('Nonempty incomplete blocks:');
-  logger.d(nonEmptyIncompleteRows);
+  print('Nonempty incomplete blocks: ${nonEmptyIncompleteRows.length}');
 
   List<Cell>? firstIncompleteBlockWithEndTimeInFuture;
 
@@ -175,14 +189,14 @@ Future<List<Cell>> getFirstIncompleteBlockWithEndTimeInFuture(
     final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
     if (blockEndTime.isAfter(now)) {
       firstIncompleteBlockWithEndTimeInFuture = [...row];
-      logger.d('Returning!');
+      print('Returning!');
       return firstIncompleteBlockWithEndTimeInFuture;
     }
-    logger.d('block DateTime: $blockDateTime');
+    print('block DateTime: $blockDateTime');
   }
 
   // Otherwise, return empty list.
-  logger.d('Couldn\'t find block, returning empty list :(');
+  print('Couldn\'t find block, returning empty list :(');
   return [];
 }
 
@@ -225,6 +239,20 @@ class BlockDataRoute extends StatefulWidget {
 class _BlockDataRouteState extends State<BlockDataRoute> {
   int numBuilds = 0;
   final storage = new FlutterSecureStorage();
+  DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
+  List<Cell> lastBlock = [];
+  GSheets? gsheets;
+
+  // Initialize state.
+  @override
+  void initState() {
+    print('Init state called.');
+    super.initState();
+    getGSheets(storage: storage).then((GSheets? gsheets) {
+      this.gsheets = gsheets;
+      setState(() {});
+    });
+  }
 
   // Build the state widget.
   @override
@@ -232,6 +260,13 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
     // Get current time so we can find the relevant block.
     var now = DateTime.now();
     numBuilds += 1;
+    print('Num builds: $numBuilds');
+
+    if (gsheets == null) {
+      return Scaffold(
+          body: Text('Failed to connect to gsheets.',
+              style: TextStyle(fontSize: 24)));
+    }
 
     // Dimensions of screen for setting padding.
     final width = MediaQuery.of(context).size.width;
@@ -239,7 +274,11 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
 
     // Scaffold themed with the global theme set in ``DiurnalApp``.
     return FutureBuilder<List<Cell>>(
-      future: getFirstIncompleteBlockWithEndTimeInFuture(storage: storage, now: now),
+      future: getFirstIncompleteBlockWithEndTimeInFuture(
+          gsheets: gsheets!,
+          now: now,
+          lastBlock: lastBlock,
+          lastBlockFetchTime: lastBlockFetchTime),
       builder: (BuildContext context, AsyncSnapshot<List<Cell>> snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -258,18 +297,30 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
             ],
           ));
         } else if (!snapshot.hasData) {
-          return Scaffold(body: Text('Awaiting for future.', style: TextStyle(fontSize: 24)));
+          return Scaffold(
+              body:
+                  Text('Awaiting for future.', style: TextStyle(fontSize: 24)));
         } else {
+
           // Get block from future.
           List<Cell>? block = snapshot.data;
+
+          // Record last fetch time.
+          lastBlockFetchTime = now;
+
           if (block == null) {
             print('Block is null!');
-            return Text('Null block');
+            return consoleMessage(text: 'Null block');
           }
+
           if (block.length == 0) {
             print('Block is empty!');
-            return Text('Empty block');
+            return consoleMessage(text: 'Empty block');
           }
+
+          // Cache block.
+          lastBlock = block;
+
           final DateTime blockStartTime =
               getDateFromBlockRow(row: block, now: now);
           final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
@@ -389,7 +440,6 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
 
   @override
   Widget build(BuildContext context) {
-    // Check for existing private key.
     checkForPrivateKey(storage: storage, context: context);
 
     // Build a Form widget using the _formKey created above.
@@ -404,6 +454,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
             Form(
               key: _formKey,
               child: TextFormField(
+
                 // The validator receives the text that the user has entered.
                 validator: (candidate) {
                   if (candidate == null || candidate.isEmpty) {
