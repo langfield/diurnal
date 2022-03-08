@@ -11,7 +11,12 @@ import 'package:diurnal/SECRETS.dart' as SECRETS;
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CONSTANTS
-const KEY = 'PRIVATE_KEY';
+
+const String KEY = 'PRIVATE_KEY';
+
+const int DAY_WIDTH = 7;
+const int DAY_HEIGHT = 74;
+const int DAY_START_ROW = 2;
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -78,7 +83,7 @@ int getMinutesFromDays(double days) {
 }
 
 
-void getCurrentBlock(FlutterSecureStorage storage) async {
+void getCurrentBlock(FlutterSecureStorage storage, DateTime now) async {
 
   // Get private key, validate it, and get spreadsheet object.
   var logger = Logger(printer: PrettyPrinter(methodCount: 0));
@@ -97,29 +102,37 @@ void getCurrentBlock(FlutterSecureStorage storage) async {
     return;
   }
 
-  // Get Monday rows.
-  final A1Ref mondayStart = A1Ref('A2');
-  final A1Ref mondayEnd = A1Ref('G75');
-  final int numRows = mondayEnd.row - mondayStart.row + 1;
-  final int numCols = mondayEnd.column - mondayStart.column + 1;
+  // Get rows for current day of the week.
+  final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
   var rows = await sheet.cells.allRows(
-      fromRow: mondayStart.row,
-      fromColumn: mondayStart.column,
-      length: numCols,
-      count: 5);
+      fromRow: DAY_START_ROW,
+      fromColumn: startColumn,
+      length: DAY_WIDTH,
+      count: DAY_HEIGHT);
+
   logger.d(rows);
 
   // Get integral times in hr:min format for each row.
   for (final row in rows) {
-    Cell cell = row[numCols - 1];
-    double days = double.parse(cell.value);
-    logger.d(days);
-    int hours = getHoursFromDays(days);
-    int mins = getMinutesFromDays(days);
-    logger.d('$hours:$mins');
+    final DateTime blockDateTime = getDateFromBlockRow(row, now);
+    logger.d('block DateTime: $blockDateTime');
   }
 
   return;
+}
+
+DateTime getDateFromBlockRow(List<Cell> row, DateTime now) {
+  final String date = now.toString().split(' ')[0];
+  Cell daysCell = row[DAY_WIDTH - 1];
+  double days = double.parse(daysCell.value);
+  int hours = getHoursFromDays(days);
+  int mins = getMinutesFromDays(days);
+  String hoursString = hours.toString().padLeft(2, '0');
+  String minsString = mins.toString().padLeft(2, '0');
+  String blockTime = '$hoursString:$minsString';
+  String blockDateString = '$date $blockTime';
+  DateTime blockDateTime = DateTime.parse(blockDateString);
+  return blockDateTime;
 }
 
 
@@ -169,7 +182,7 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
     // Get current time so we can find the relevant block.
     var now = DateTime.now();
     print('Epoch ms: ${now.millisecondsSinceEpoch}');
-    getCurrentBlock(storage);
+    getCurrentBlock(storage, now);
 
     numBuilds += 1;
 
