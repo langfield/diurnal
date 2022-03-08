@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:async';
 
+import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter/material.dart';
@@ -130,13 +131,13 @@ bool isDone({required List<Cell> row}) {
   return false;
 }
 
-/// Return null if there are no blocks with future end times.
-Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
+/// Return empty list if there are no blocks with future end times.
+Future<List<Cell>> getFirstIncompleteBlockWithEndTimeInFuture(
     {required FlutterSecureStorage storage, required DateTime now}) async {
   // Get private key, validate it, and get spreadsheet object.
   var logger = Logger(printer: PrettyPrinter(methodCount: 0));
   String? privateKey = await storage.read(key: KEY);
-  if (!isValidPrivateKey(privateKey: privateKey)) return null;
+  if (!isValidPrivateKey(privateKey: privateKey)) return [];
   privateKey = privateKey!;
   String credentials = getCredentialsFromPrivateKey(privateKey: privateKey);
   final gsheets = GSheets(credentials);
@@ -146,33 +147,43 @@ Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
   Worksheet? sheet = ss.worksheetByTitle('Sheet1');
   if (sheet == null) {
     print('Sheet1 not found :(');
-    return null;
+    return [];
   }
 
   // Get rows for current day of the week.
   final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
-  var rows = await sheet.cells.allRows(
+  final rows = await sheet.cells.allRows(
       fromRow: DAY_START_ROW,
       fromColumn: startColumn,
       length: DAY_WIDTH,
       count: DAY_HEIGHT);
 
-  rows = rows.where((row) => !hasEmptyFields(row: row)).toList();
-  logger.d('Nonempty rows:');
-  logger.d(rows);
+  final nonEmptyRows = rows.where((row) => !hasEmptyFields(row: row)).toList();
+  logger.d('Nonempty blocks:');
+  logger.d(nonEmptyRows);
 
-  rows = rows.where((row) => isDone(row: row)).toList();
-  logger.d('Nonempty done rows:');
-  logger.d(rows);
+  final nonEmptyIncompleteRows =
+      nonEmptyRows.where((row) => !isDone(row: row)).toList();
+  logger.d('Nonempty incomplete blocks:');
+  logger.d(nonEmptyIncompleteRows);
 
-  // Get integral times in hr:min format for each row.
-  for (final row in rows) {
+  List<Cell>? firstIncompleteBlockWithEndTimeInFuture;
+
+  // Iterate over blocks and return as soon as we find one with future end time.
+  for (final row in nonEmptyIncompleteRows) {
     final DateTime blockDateTime = getDateFromBlockRow(row: row, now: now);
     final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
+    if (blockEndTime.isAfter(now)) {
+      firstIncompleteBlockWithEndTimeInFuture = [...row];
+      logger.d('Returning!');
+      return firstIncompleteBlockWithEndTimeInFuture;
+    }
     logger.d('block DateTime: $blockDateTime');
   }
 
-  return null;
+  // Otherwise, return empty list.
+  logger.d('Couldn\'t find block, returning empty list :(');
+  return [];
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -220,9 +231,6 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
   Widget build(BuildContext context) {
     // Get current time so we can find the relevant block.
     var now = DateTime.now();
-    print('Epoch ms: ${now.millisecondsSinceEpoch}');
-    getFirstIncompleteBlockWithEndTimeInFuture(storage: storage, now: now);
-
     numBuilds += 1;
 
     // Dimensions of screen for setting padding.
@@ -230,74 +238,124 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
     final height = MediaQuery.of(context).size.height;
 
     // Scaffold themed with the global theme set in ``DiurnalApp``.
-    return Scaffold(
-      // Pad all content with a margin.
-      body: Padding(
-        padding: EdgeInsets.all(0.2 * min(width, height)),
+    return FutureBuilder<List<Cell>>(
+      future: getFirstIncompleteBlockWithEndTimeInFuture(storage: storage, now: now),
+      builder: (BuildContext context, AsyncSnapshot<List<Cell>> snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+              child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 60,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text('Error: ${snapshot.error}'),
+              )
+            ],
+          ));
+        } else if (!snapshot.hasData) {
+          return Scaffold(body: Text('Awaiting for future.', style: TextStyle(fontSize: 24)));
+        } else {
+          // Get block from future.
+          List<Cell>? block = snapshot.data;
+          if (block == null) {
+            print('Block is null!');
+            return Text('Null block');
+          }
+          if (block.length == 0) {
+            print('Block is empty!');
+            return Text('Empty block');
+          }
+          final DateTime blockStartTime =
+              getDateFromBlockRow(row: block, now: now);
+          final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
+          final DateFormat formatter = DateFormat.Hm();
+          final String blockStartStr = formatter.format(blockStartTime);
+          final String blockEndStr = formatter.format(blockEndTime);
 
-        // Main column containing several centered rows (block, buttons, timer).
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            // Block row.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                // Title, properties, number of builds.
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    // Block title.
-                    Text(
-                      'Brush.+Floss.+Tongue.+Mouthwash.',
-                      style: TextStyle(fontSize: 24),
-                    ),
+          return Scaffold(
+            // Pad all content with a margin.
+            body: Padding(
+              padding: EdgeInsets.all(0.2 * min(width, height)),
 
-                    // Block duration and weight.
-                    Text('100min  3N', style: TextStyle(fontSize: 24)),
+              // Main column containing several centered rows (block, buttons, timer).
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  // Block row.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      // Title, properties, number of builds.
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          // Block title.
+                          Text(
+                            block[TITLE].value,
+                            style: TextStyle(fontSize: 24),
+                          ),
 
-                    // Debug number of builds.
-                    Text('Number of builds: $numBuilds',
-                        style: TextStyle(fontSize: 24, color: Colors.yellow)),
-                  ],
-                ),
+                          // Block duration and weight.
+                          Text(
+                              '${int.parse(block[MINS].value)}min  ${int.parse(block[WEIGHT].value)}N',
+                              style: TextStyle(fontSize: 24)),
 
-                // Start and end time.
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: <Widget>[
-                    Text('21:35 -> 23:15 UTC+0', style: TextStyle(fontSize: 24))
-                  ],
-                ),
-              ],
+                          // Debug number of builds.
+                          Text('Number of builds: $numBuilds',
+                              style: TextStyle(
+                                  fontSize: 24, color: Colors.yellow)),
+                        ],
+                      ),
+
+                      // Start and end time.
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: <Widget>[
+                          Text('$blockStartStr -> $blockEndStr UTC+0',
+                              style: TextStyle(fontSize: 24))
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // Pass/fail buttons.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      TextButton(
+                        onPressed: () => getSheet(credentials: ''),
+                        child: const Text('PASS',
+                            style:
+                                TextStyle(fontSize: 24, color: Colors.white)),
+                      ),
+                      TextButton(
+                        onPressed: null,
+                        child: const Text('FAIL',
+                            style:
+                                TextStyle(fontSize: 24, color: Colors.white)),
+                      ),
+                    ],
+                  ),
+
+                  // Time remaining.
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text('00:35', style: TextStyle(fontSize: 24))
+                    ],
+                  ),
+                ],
+              ),
             ),
-
-            // Pass/fail buttons.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                TextButton(
-                  onPressed: () => getSheet(credentials: ''),
-                  child: const Text('PASS',
-                      style: TextStyle(fontSize: 24, color: Colors.white)),
-                ),
-                TextButton(
-                  onPressed: null,
-                  child: const Text('FAIL',
-                      style: TextStyle(fontSize: 24, color: Colors.white)),
-                ),
-              ],
-            ),
-
-            // Time remaining.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[Text('00:35', style: TextStyle(fontSize: 24))],
-            ),
-          ],
-        ),
-      ),
+          );
+        }
+      },
     );
   }
 }
