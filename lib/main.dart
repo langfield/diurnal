@@ -30,7 +30,8 @@ void getSheet(String credentials) async {
   return;
 }
 
-void checkForPrivateKey(FlutterSecureStorage storage, BuildContext context) async {
+void checkForPrivateKey(
+    FlutterSecureStorage storage, BuildContext context) async {
   String? value = await storage.read(key: KEY);
   if (value != null) {
     print('Found existing private key.');
@@ -48,8 +49,6 @@ String getCredentialsFromPrivateKey(String privateKey) {
   return SECRETS.credentials.replaceAll('@@@@@@', escaped);
 }
 
-
-
 // Validate private key by attempting to construct ``GSheets`` instance.
 bool isValidPrivateKey(String? privateKey) {
   if (privateKey == null) {
@@ -59,29 +58,67 @@ bool isValidPrivateKey(String? privateKey) {
     String credentials = getCredentialsFromPrivateKey(privateKey);
     final _ = GSheets(credentials);
     return true;
-  } on ArgumentError catch(e) {
+  } on ArgumentError catch (e) {
     print('Caught error: $e');
     return false;
   }
 }
 
+
+int getHoursFromDays(double days) {
+  return (days * 24).floor();
+}
+
+
+int getMinutesFromDays(double days) {
+  double hours = (days * 24);
+  int wholeHours = hours.floor();
+  double remainingHours = hours - wholeHours;
+  return (remainingHours * 60).round();
+}
+
+
 void getCurrentBlock(FlutterSecureStorage storage) async {
+
+  // Get private key, validate it, and get spreadsheet object.
+  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
   String? privateKey = await storage.read(key: KEY);
-  if (!isValidPrivateKey(privateKey)) {
+  if (!isValidPrivateKey(privateKey))
     return;
-  }
   privateKey = privateKey!;
   String credentials = getCredentialsFromPrivateKey(privateKey);
   final gsheets = GSheets(credentials);
   final ss = await gsheets.spreadsheet(SECRETS.ssid);
+
+  // Get Sheet1.
   Worksheet? sheet = ss.worksheetByTitle('Sheet1');
   if (sheet == null) {
     print('Sheet1 not found :(');
     return;
   }
-  var cols = await sheet.cells.allColumns();
-  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
-  logger.d(cols);
+
+  // Get Monday rows.
+  final A1Ref mondayStart = A1Ref('A2');
+  final A1Ref mondayEnd = A1Ref('G75');
+  final int numRows = mondayEnd.row - mondayStart.row + 1;
+  final int numCols = mondayEnd.column - mondayStart.column + 1;
+  var rows = await sheet.cells.allRows(
+      fromRow: mondayStart.row,
+      fromColumn: mondayStart.column,
+      length: numCols,
+      count: 5);
+  logger.d(rows);
+
+  // Get integral times in hr:min format for each row.
+  for (final row in rows) {
+    Cell cell = row[numCols - 1];
+    double days = double.parse(cell.value);
+    logger.d(days);
+    int hours = getHoursFromDays(days);
+    int mins = getMinutesFromDays(days);
+    logger.d('$hours:$mins');
+  }
+
   return;
 }
 
@@ -129,7 +166,6 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
   // Build the state widget.
   @override
   Widget build(BuildContext context) {
-
     // Get current time so we can find the relevant block.
     var now = DateTime.now();
     print('Epoch ms: ${now.millisecondsSinceEpoch}');
@@ -143,7 +179,6 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
 
     // Scaffold themed with the global theme set in ``DiurnalApp``.
     return Scaffold(
-
       // Pad all content with a margin.
       body: Padding(
         padding: EdgeInsets.all(0.2 * min(width, height)),
@@ -152,18 +187,15 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-
             // Block row.
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-
                 // Title, properties, number of builds.
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-
                     // Block title.
                     Text(
                       'Brush.+Floss.+Tongue.+Mouthwash.',
@@ -231,7 +263,6 @@ class PrivateKeyFormRoute extends StatefulWidget {
   }
 }
 
-
 // STATE
 class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   // Create a global key that uniquely identifies the Form widget
@@ -248,7 +279,6 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
 
   @override
   Widget build(BuildContext context) {
-
     // Check for existing private key.
     checkForPrivateKey(storage, context);
 
@@ -264,7 +294,6 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
             Form(
               key: _formKey,
               child: TextFormField(
-
                 // The validator receives the text that the user has entered.
                 validator: (candidate) {
                   if (candidate == null || candidate.isEmpty) {
@@ -286,17 +315,16 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
                     borderSide: const BorderSide(
-                        color: Color.fromRGBO(255,0,0,0.7), width: 2.0),
+                        color: Color.fromRGBO(255, 0, 0, 0.7), width: 2.0),
                   ),
                   focusedErrorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
-                    borderSide: const BorderSide(
-                        color: Colors.red, width: 2.0),
+                    borderSide: const BorderSide(color: Colors.red, width: 2.0),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
-                    borderSide: const BorderSide(
-                        color: Colors.white, width: 2.0),
+                    borderSide:
+                        const BorderSide(color: Colors.white, width: 2.0),
                   ),
                   enabledBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
@@ -316,10 +344,8 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
 
             // Button to submit private key.
             TextButton(
-
               // Validate private key and redirect to BlockDataRoute.
               onPressed: () async {
-
                 // Get private key from form.
                 final privateKey = controller.text;
 
@@ -329,9 +355,9 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
                   await storage.write(key: KEY, value: privateKey);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const BlockDataRoute()),
+                    MaterialPageRoute(
+                        builder: (context) => const BlockDataRoute()),
                   );
-
                 } else {
                   print('Failed to validate input: $privateKey');
                 }
@@ -339,7 +365,6 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
               child: const Text('Submit',
                   style: TextStyle(fontSize: 24, color: Colors.white)),
             ),
-
           ],
         ),
       ),
