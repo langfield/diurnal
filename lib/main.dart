@@ -1,21 +1,16 @@
 import 'dart:math';
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
 import 'package:gsheets/gsheets.dart';
-import 'package:diurnal/SECRETS.dart' as SECRETS;
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'package:diurnal/SECRETS.dart' as SECRETS;
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // CONSTANTS
-
-/// Your spreadsheet id
-///
-/// It can be found in the link to your spreadsheet -
-/// link looks like so https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit#gid=0
-/// [YOUR_SPREADSHEET_ID] in the path is the id your need
-const _spreadsheetId = '';
 const KEY = 'PRIVATE_KEY';
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -24,23 +19,79 @@ const KEY = 'PRIVATE_KEY';
 
 // Run the main app.
 void main() {
-  runApp(const MyApp());
+  runApp(const DiurnalApp());
 }
 
 // Authenticate with google and get a spreadsheet.
 void getSheet(String credentials) async {
   final gsheets = GSheets(credentials);
-  final ss = await gsheets.spreadsheet(_spreadsheetId);
+  final ss = await gsheets.spreadsheet(SECRETS.ssid);
   var sheet = ss.worksheetByTitle('Sheet1');
   return;
 }
+
+void checkForPrivateKey(FlutterSecureStorage storage, BuildContext context) async {
+  String? value = await storage.read(key: KEY);
+  if (value != null) {
+    print('Found existing private key.');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BlockDataRoute()),
+    );
+    return;
+  }
+  print("Couldn't find private key.");
+}
+
+String getCredentialsFromPrivateKey(String privateKey) {
+  String escaped = privateKey.replaceAll('\n', '\\n');
+  return SECRETS.credentials.replaceAll('@@@@@@', escaped);
+}
+
+
+
+// Validate private key by attempting to construct ``GSheets`` instance.
+bool isValidPrivateKey(String? privateKey) {
+  if (privateKey == null) {
+    return false;
+  }
+  try {
+    String credentials = getCredentialsFromPrivateKey(privateKey);
+    final _ = GSheets(credentials);
+    return true;
+  } on ArgumentError catch(e) {
+    print('Caught error: $e');
+    return false;
+  }
+}
+
+void getCurrentBlock(FlutterSecureStorage storage) async {
+  String? privateKey = await storage.read(key: KEY);
+  if (!isValidPrivateKey(privateKey)) {
+    return;
+  }
+  privateKey = privateKey!;
+  String credentials = getCredentialsFromPrivateKey(privateKey);
+  final gsheets = GSheets(credentials);
+  final ss = await gsheets.spreadsheet(SECRETS.ssid);
+  Worksheet? sheet = ss.worksheetByTitle('Sheet1');
+  if (sheet == null) {
+    print('Sheet1 not found :(');
+    return;
+  }
+  var cols = await sheet.cells.allColumns();
+  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
+  logger.d(cols);
+  return;
+}
+
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // WIDGET
 // The main app, top-level widget.
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class DiurnalApp extends StatelessWidget {
+  const DiurnalApp({Key? key}) : super(key: key);
 
   // Build the main application, and set the global theme.
   @override
@@ -73,17 +124,24 @@ class BlockDataRoute extends StatefulWidget {
 // STATE
 class _BlockDataRouteState extends State<BlockDataRoute> {
   int numBuilds = 0;
+  final storage = new FlutterSecureStorage();
 
   // Build the state widget.
   @override
   Widget build(BuildContext context) {
+
+    // Get current time so we can find the relevant block.
+    var now = DateTime.now();
+    print('Epoch ms: ${now.millisecondsSinceEpoch}');
+    getCurrentBlock(storage);
+
     numBuilds += 1;
 
     // Dimensions of screen for setting padding.
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    // Scaffold themed with the global theme set in ``MyApp``.
+    // Scaffold themed with the global theme set in ``DiurnalApp``.
     return Scaffold(
 
       // Pad all content with a margin.
@@ -174,20 +232,6 @@ class PrivateKeyFormRoute extends StatefulWidget {
 }
 
 
-void storageDemo(FlutterSecureStorage storage, BuildContext context) async {
-  // Read value
-  String? value = await storage.read(key: KEY);
-  if (value != null) {
-    print('Found existing private key.');
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const BlockDataRoute()),
-    );
-    return;
-  }
-  print("Couldn't find private key.");
-}
-
 // STATE
 class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   // Create a global key that uniquely identifies the Form widget
@@ -206,7 +250,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   Widget build(BuildContext context) {
 
     // Check for existing private key.
-    storageDemo(storage, context);
+    checkForPrivateKey(storage, context);
 
     // Build a Form widget using the _formKey created above.
     final width = MediaQuery.of(context).size.width;
@@ -222,20 +266,14 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
               child: TextFormField(
 
                 // The validator receives the text that the user has entered.
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
+                validator: (candidate) {
+                  if (candidate == null || candidate.isEmpty) {
                     return 'Empty private key';
                   }
-                  try {
-                    String escaped = value.replaceAll('\n', '\\n');
-                    String credentials = SECRETS.credentials.replaceAll('@@@@@@', escaped);
-                    final _ = GSheets(credentials);
-                    return null;
-                  } on ArgumentError catch(e) {
-                    print('Caught error: $e');
+                  if (!isValidPrivateKey(candidate)) {
                     return 'Bad private key';
                   }
-                  return 'FATAL: error not caught; please report this';
+                  return null;
                 },
                 controller: controller,
                 style: TextStyle(
@@ -276,14 +314,24 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
               ),
             ),
 
+            // Button to submit private key.
             TextButton(
-              onPressed: () {
+
+              // Validate private key and redirect to BlockDataRoute.
+              onPressed: () async {
+
+                // Get private key from form.
                 final privateKey = controller.text;
+
+                // If entered private key is valid, write private key to secure
+                // storage and push BlockDataRoute.
                 if (_formKey.currentState!.validate()) {
+                  await storage.write(key: KEY, value: privateKey);
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const BlockDataRoute()),
                   );
+
                 } else {
                   print('Failed to validate input: $privateKey');
                 }
@@ -291,6 +339,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
               child: const Text('Submit',
                   style: TextStyle(fontSize: 24, color: Colors.white)),
             ),
+
           ],
         ),
       ),
