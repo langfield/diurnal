@@ -17,6 +17,13 @@ const String KEY = 'PRIVATE_KEY';
 const int DAY_WIDTH = 7;
 const int DAY_HEIGHT = 74;
 const int DAY_START_ROW = 2;
+const int TITLE = 0;
+const int DONE = 1;
+const int WEIGHT = 2;
+const int ACTUAL = 3;
+const int MINS = 4;
+const int LATE = 5;
+const int TIME = 6;
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -28,7 +35,7 @@ void main() {
 }
 
 // Authenticate with google and get a spreadsheet.
-void getSheet(String credentials) async {
+void getSheet({required String credentials}) async {
   final gsheets = GSheets(credentials);
   final ss = await gsheets.spreadsheet(SECRETS.ssid);
   var sheet = ss.worksheetByTitle('Sheet1');
@@ -36,7 +43,8 @@ void getSheet(String credentials) async {
 }
 
 void checkForPrivateKey(
-    FlutterSecureStorage storage, BuildContext context) async {
+    {required FlutterSecureStorage storage,
+    required BuildContext context}) async {
   String? value = await storage.read(key: KEY);
   if (value != null) {
     print('Found existing private key.');
@@ -49,18 +57,18 @@ void checkForPrivateKey(
   print("Couldn't find private key.");
 }
 
-String getCredentialsFromPrivateKey(String privateKey) {
+String getCredentialsFromPrivateKey({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
   return SECRETS.credentials.replaceAll('@@@@@@', escaped);
 }
 
 // Validate private key by attempting to construct ``GSheets`` instance.
-bool isValidPrivateKey(String? privateKey) {
+bool isValidPrivateKey({required String? privateKey}) {
   if (privateKey == null) {
     return false;
   }
   try {
-    String credentials = getCredentialsFromPrivateKey(privateKey);
+    String credentials = getCredentialsFromPrivateKey(privateKey: privateKey);
     final _ = GSheets(credentials);
     return true;
   } on ArgumentError catch (e) {
@@ -69,29 +77,68 @@ bool isValidPrivateKey(String? privateKey) {
   }
 }
 
+DateTime getDateFromBlockRow({required List<Cell> row, required DateTime now}) {
+  final String date = now.toString().split(' ')[0];
+  Cell daysCell = row[DAY_WIDTH - 1];
+  double days = double.parse(daysCell.value);
+  int hours = getHoursFromDays(days: days);
+  int mins = getMinutesFromDays(days: days);
+  String hoursString = hours.toString().padLeft(2, '0');
+  String minsString = mins.toString().padLeft(2, '0');
+  String blockTime = '$hoursString:$minsString';
+  String blockDateString = '$date $blockTime';
+  DateTime blockDateTime = DateTime.parse(blockDateString);
+  return blockDateTime;
+}
 
-int getHoursFromDays(double days) {
+int getHoursFromDays({required double days}) {
   return (days * 24).floor();
 }
 
-
-int getMinutesFromDays(double days) {
+int getMinutesFromDays({required double days}) {
   double hours = (days * 24);
   int wholeHours = hours.floor();
   double remainingHours = hours - wholeHours;
   return (remainingHours * 60).round();
 }
 
+/// Return true if any cells are empty strings.
+bool hasEmptyFields({required List<Cell> row}) {
+  for (final Cell cell in row) {
+    if (cell.value == '') {
+      return true;
+    }
+  }
+  return false;
+}
 
-void getCurrentBlock(FlutterSecureStorage storage, DateTime now) async {
+/// Get the end DateTime of the block, where ``row`` is assumed to be nonempty.
+DateTime getBlockEndTime({required List<Cell> row, required DateTime now}) {
+  final DateTime startTime = getDateFromBlockRow(row: row, now: now);
+  final Duration duration = Duration(minutes: int.parse(row[MINS].value));
+  final DateTime endTime = startTime.add(duration);
+  return endTime;
+}
 
+bool isDone({required List<Cell> row}) {
+  final String doneString = row[DONE].value;
+  final double doneDecimal = double.parse(doneString);
+  final int done = doneDecimal.floor();
+  if (done == 1) {
+    return true;
+  }
+  return false;
+}
+
+/// Return null if there are no blocks with future end times.
+Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
+    {required FlutterSecureStorage storage, required DateTime now}) async {
   // Get private key, validate it, and get spreadsheet object.
   var logger = Logger(printer: PrettyPrinter(methodCount: 0));
   String? privateKey = await storage.read(key: KEY);
-  if (!isValidPrivateKey(privateKey))
-    return;
+  if (!isValidPrivateKey(privateKey: privateKey)) return null;
   privateKey = privateKey!;
-  String credentials = getCredentialsFromPrivateKey(privateKey);
+  String credentials = getCredentialsFromPrivateKey(privateKey: privateKey);
   final gsheets = GSheets(credentials);
   final ss = await gsheets.spreadsheet(SECRETS.ssid);
 
@@ -99,7 +146,7 @@ void getCurrentBlock(FlutterSecureStorage storage, DateTime now) async {
   Worksheet? sheet = ss.worksheetByTitle('Sheet1');
   if (sheet == null) {
     print('Sheet1 not found :(');
-    return;
+    return null;
   }
 
   // Get rows for current day of the week.
@@ -110,31 +157,23 @@ void getCurrentBlock(FlutterSecureStorage storage, DateTime now) async {
       length: DAY_WIDTH,
       count: DAY_HEIGHT);
 
+  rows = rows.where((row) => !hasEmptyFields(row: row)).toList();
+  logger.d('Nonempty rows:');
+  logger.d(rows);
+
+  rows = rows.where((row) => isDone(row: row)).toList();
+  logger.d('Nonempty done rows:');
   logger.d(rows);
 
   // Get integral times in hr:min format for each row.
   for (final row in rows) {
-    final DateTime blockDateTime = getDateFromBlockRow(row, now);
+    final DateTime blockDateTime = getDateFromBlockRow(row: row, now: now);
+    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
     logger.d('block DateTime: $blockDateTime');
   }
 
-  return;
+  return null;
 }
-
-DateTime getDateFromBlockRow(List<Cell> row, DateTime now) {
-  final String date = now.toString().split(' ')[0];
-  Cell daysCell = row[DAY_WIDTH - 1];
-  double days = double.parse(daysCell.value);
-  int hours = getHoursFromDays(days);
-  int mins = getMinutesFromDays(days);
-  String hoursString = hours.toString().padLeft(2, '0');
-  String minsString = mins.toString().padLeft(2, '0');
-  String blockTime = '$hoursString:$minsString';
-  String blockDateString = '$date $blockTime';
-  DateTime blockDateTime = DateTime.parse(blockDateString);
-  return blockDateTime;
-}
-
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -182,7 +221,7 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
     // Get current time so we can find the relevant block.
     var now = DateTime.now();
     print('Epoch ms: ${now.millisecondsSinceEpoch}');
-    getCurrentBlock(storage, now);
+    getFirstIncompleteBlockWithEndTimeInFuture(storage: storage, now: now);
 
     numBuilds += 1;
 
@@ -239,7 +278,7 @@ class _BlockDataRouteState extends State<BlockDataRoute> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 TextButton(
-                  onPressed: () => getSheet(''),
+                  onPressed: () => getSheet(credentials: ''),
                   child: const Text('PASS',
                       style: TextStyle(fontSize: 24, color: Colors.white)),
                 ),
@@ -293,7 +332,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   @override
   Widget build(BuildContext context) {
     // Check for existing private key.
-    checkForPrivateKey(storage, context);
+    checkForPrivateKey(storage: storage, context: context);
 
     // Build a Form widget using the _formKey created above.
     final width = MediaQuery.of(context).size.width;
@@ -312,7 +351,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
                   if (candidate == null || candidate.isEmpty) {
                     return 'Empty private key';
                   }
-                  if (!isValidPrivateKey(candidate)) {
+                  if (!isValidPrivateKey(privateKey: candidate)) {
                     return 'Bad private key';
                   }
                   return null;
