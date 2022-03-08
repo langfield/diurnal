@@ -210,6 +210,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
 
     // Build a Form widget using the _formKey created above.
     final width = MediaQuery.of(context).size.width;
+    final height = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 0.2 * width),
@@ -242,17 +243,31 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
                 ),
                 maxLines: 20,
                 cursorColor: Colors.white,
+
                 decoration: const InputDecoration(
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(0.0)),
+                    borderSide: const BorderSide(
+                        color: Color.fromRGBO(255,0,0,0.7), width: 2.0),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(0.0)),
+                    borderSide: const BorderSide(
+                        color: Colors.red, width: 2.0),
+                  ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
                     borderSide: const BorderSide(
-                        color: Color.fromRGBO(255, 255, 255, 1.0), width: 2.0),
+                        color: Colors.white, width: 2.0),
                   ),
                   enabledBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(0.0)),
                     borderSide: const BorderSide(
                         color: Color.fromRGBO(255, 255, 255, 0.7), width: 2.0),
                   ),
+                  errorStyle: TextStyle(fontSize: 24),
+                  helperText: " ",
+                  helperStyle: TextStyle(fontSize: 24),
                   hintText: 'Service account private key',
                   hintStyle:
                       TextStyle(color: Color.fromRGBO(255, 255, 255, 0.5)),
