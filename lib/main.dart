@@ -224,7 +224,8 @@ Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
 // AWAITABLE HANDLERS
 
 void handleCandidateKey(
-    {required BuildContext context,
+    {required DiurnalState diurnal,
+    required BuildContext context,
     required FlutterSecureStorage storage,
     required String candidateKey}) {
   if (candidateKey == '') {
@@ -232,11 +233,14 @@ void handleCandidateKey(
     Navigator.push(
       context,
       MaterialPageRoute(
-          builder: (context) => PrivateKeyFormRoute(storage: storage)),
+          builder: (context) =>
+              PrivateKeyFormRoute(storage: storage, refresh: diurnal._refresh)),
     );
     return;
   }
-  print('Got private key in handler.');
+  diurnal.setState(() {
+    diurnal.privateKey = candidateKey;
+  });
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -297,6 +301,10 @@ class DiurnalState extends State<Diurnal> {
   String privateKey = '';
   DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
+  void _refresh() {
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     print('Building Diurnal widget...');
@@ -308,10 +316,10 @@ class DiurnalState extends State<Diurnal> {
       print('Getting private key from secure storage...');
       getPrivateKey(storage: storage).then((String candidateKey) {
         handleCandidateKey(
-            context: context, storage: storage, candidateKey: candidateKey);
-        setState(() {
-          this.privateKey = candidateKey;
-        });
+            diurnal: this,
+            context: context,
+            storage: storage,
+            candidateKey: candidateKey);
       });
       return printConsoleText(text: 'Waiting for private key...');
     }
@@ -399,9 +407,11 @@ class DiurnalState extends State<Diurnal> {
 }
 
 class PrivateKeyFormRoute extends StatefulWidget {
-  const PrivateKeyFormRoute({Key? key, required this.storage})
+  const PrivateKeyFormRoute(
+      {Key? key, required this.storage, required this.refresh})
       : super(key: key);
   final FlutterSecureStorage storage;
+  final VoidCallback refresh;
 
   @override
   PrivateKeyFormRouteState createState() {
@@ -446,6 +456,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
           final privateKey = controller.text;
           if (_formKey.currentState!.validate()) {
             await widget.storage.write(key: KEY, value: privateKey);
+            widget.refresh();
             Navigator.pop(context);
           } else {
             print('Failed to validate input: $privateKey');
