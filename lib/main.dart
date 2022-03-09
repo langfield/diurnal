@@ -297,6 +297,7 @@ class DiurnalState extends State<Diurnal> {
   List<Cell>? lastBlock;
 
   int numBuilds = 0;
+  bool forceFetch = false;
   final storage = new FlutterSecureStorage();
   String privateKey = '';
   DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
@@ -335,7 +336,9 @@ class DiurnalState extends State<Diurnal> {
     }
 
     print('Getting current block...');
-    if (this.lastBlockFetchTime.add(Duration(minutes: 1)).isAfter(now)) {
+    const oneMin = Duration(minutes: 1);
+    final bool tooSoon = this.lastBlockFetchTime.add(oneMin).isAfter(now);
+    if (tooSoon && !forceFetch) {
       print('Using cached block.');
     } else {
       print('Fetching current block from Google...');
@@ -351,6 +354,7 @@ class DiurnalState extends State<Diurnal> {
           });
         }
       });
+      this.forceFetch = false;
     }
     if (lastBlock == null) {
       return printConsoleText(text: 'Waiting for block...');
@@ -385,10 +389,29 @@ class DiurnalState extends State<Diurnal> {
         Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
     final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
 
+    Cell doneCell = block[DONE];
+    void passHandler({required Cell doneCell}) {
+      doneCell.post('1');
+      setState(() {
+        this.forceFetch = true;
+      });
+      return;
+    }
+
+    void failHandler({required Cell doneCell}) {
+      doneCell.post('0');
+      setState(() {
+        this.forceFetch = true;
+      });
+      return;
+    }
+
     final pass = Text('PASS', style: STYLE);
     final fail = Text('FAIL', style: STYLE);
-    final Widget passButton = TextButton(onPressed: null, child: pass);
-    final Widget failButton = TextButton(onPressed: null, child: fail);
+    final Widget passButton = TextButton(
+        onPressed: () => passHandler(doneCell: doneCell), child: pass);
+    final Widget failButton = TextButton(
+        onPressed: () => failHandler(doneCell: doneCell), child: fail);
     final List<Widget> buttons = [passButton, failButton];
 
     final Widget timeLeft = Text('00:35');
