@@ -142,6 +142,7 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
   if (!isValidPrivateKey(privateKey: privateKey)) return null;
   String credentials = getCredentialsFromPrivateKey(privateKey: privateKey!);
   final gsheets = GSheets(credentials);
+  await Future.delayed(Duration(seconds: 3));
   return gsheets;
 }
 
@@ -150,8 +151,7 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
 // AWAITABLE HANDLERS
 
 Widget handleCandidateKey(
-    {required DiurnalState diurnal,
-    required BuildContext context,
+    {required BuildContext context,
     required FlutterSecureStorage storage,
     required String candidateKey}) {
   if (candidateKey == '') {
@@ -204,38 +204,34 @@ class DiurnalState extends State<Diurnal> {
 
   @override
   Widget build(BuildContext context) {
-    print('Building Diurnal widget.');
+    print('Building Diurnal widget...');
     var now = DateTime.now();
     numBuilds += 1;
     print('Num builds: $numBuilds');
 
-    print('Attempting to get private key from secure storage...');
     if (privateKey == '') {
-      getPrivateKey(storage: storage).then((candidateKey) {
+      print('Getting private key from secure storage...');
+      getPrivateKey(storage: storage).then((String candidateKey) {
         handleCandidateKey(
-            diurnal: this,
-            context: context,
-            storage: storage,
-            candidateKey: candidateKey);
-        privateKey = candidateKey;
-        setState(() {});
+            context: context, storage: storage, candidateKey: candidateKey);
+        setState(() {this.privateKey = candidateKey;});
       });
-      return printConsoleText(context: context, text: 'Waiting for private key...');
+      return printConsoleText(
+          context: context, text: 'Waiting for private key...');
     }
 
     if (this.gsheets == null) {
-      print('Attempting to construct gsheets object.');
+      print('Instantiating gsheets object...');
       getGSheets(storage: storage).then((GSheets? gsheets) {
-        this.gsheets = gsheets;
-        setState(() {});
+        setState(() {this.gsheets = gsheets;});
       });
-      if (this.gsheets == null) {
-        return printConsoleText(
-            context: context, text: 'Failed to get gsheets object.');
-      }
+      return printConsoleText(
+          context: context, text: 'Waiting for gsheets object...');
     }
+
     return printConsoleText(
-        context: context, text: 'Found existing private key and constructed gsheets object.');
+        context: context,
+        text: 'Found existing private key and constructed gsheets object.');
   }
 }
 
