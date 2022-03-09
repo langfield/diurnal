@@ -131,10 +131,21 @@ Widget printConsoleText({required BuildContext context, required String text}) {
 Future<String> getPrivateKey({required FlutterSecureStorage storage}) async {
   String? privateKey = await storage.read(key: KEY);
   if (privateKey == null) {
+    print('Couldn\'t find private key in storage.');
     return '';
   }
   return privateKey;
 }
+
+Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
+  String? privateKey = await storage.read(key: KEY);
+  if (!isValidPrivateKey(privateKey: privateKey)) return null;
+  String credentials = getCredentialsFromPrivateKey(privateKey: privateKey!);
+  final gsheets = GSheets(credentials);
+  return gsheets;
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // AWAITABLE HANDLERS
 
@@ -152,10 +163,8 @@ Widget handleCandidateKey(
     );
     return printConsoleText(context: context, text: 'Pushed to navigator.');
   } else {
+    print('Got private key in handler.');
     return printConsoleText(context: context, text: 'Got private key.');
-    diurnal.setState(() {
-      diurnal.privateKey = candidateKey;
-    });
   }
 }
 
@@ -173,7 +182,10 @@ class TopLevel extends StatefulWidget {
 class TopLevelState extends State<TopLevel> {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: Diurnal());
+    return MaterialApp(
+      home: Diurnal(),
+      theme: getTheme(context: context),
+    );
   }
 }
 
@@ -188,6 +200,7 @@ class DiurnalState extends State<Diurnal> {
   final storage = new FlutterSecureStorage();
   int numBuilds = 0;
   String privateKey = '';
+  GSheets? gsheets;
 
   @override
   Widget build(BuildContext context) {
@@ -195,18 +208,34 @@ class DiurnalState extends State<Diurnal> {
     var now = DateTime.now();
     numBuilds += 1;
     print('Num builds: $numBuilds');
+
     print('Attempting to get private key from secure storage...');
-
-
     if (privateKey == '') {
-      getPrivateKey(storage: storage).then((candidateKey) => handleCandidateKey(
-          diurnal: this,
-          context: context,
-          storage: storage,
-          candidateKey: candidateKey));
+      getPrivateKey(storage: storage).then((candidateKey) {
+        handleCandidateKey(
+            diurnal: this,
+            context: context,
+            storage: storage,
+            candidateKey: candidateKey);
+        privateKey = candidateKey;
+        setState(() {});
+      });
+      return printConsoleText(context: context, text: 'Waiting for private key...');
+    }
+
+    if (this.gsheets == null) {
+      print('Attempting to construct gsheets object.');
+      getGSheets(storage: storage).then((GSheets? gsheets) {
+        this.gsheets = gsheets;
+        setState(() {});
+      });
+      if (this.gsheets == null) {
+        return printConsoleText(
+            context: context, text: 'Failed to get gsheets object.');
+      }
     }
     return printConsoleText(
-        context: context, text: 'Found existing private key.');
+        context: context, text: 'Found existing private key and constructed gsheets object.');
   }
 }
 
@@ -250,6 +279,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
           },
           controller: controller,
           maxLines: 20,
+          decoration: FORM_FIELD_DECORATION,
         ),
       ),
       TextButton(
