@@ -60,6 +60,24 @@ OutlineInputBorder getOutlineInputBorder({required Color color}) {
   );
 }
 
+ThemeData getTheme({required BuildContext context}) {
+  return new ThemeData(
+      scaffoldBackgroundColor: Colors.black,
+      textTheme: Theme.of(context).textTheme.apply(
+            fontFamily: 'ATT',
+            bodyColor: Colors.white,
+            displayColor: Colors.white,
+            fontSizeFactor: 0,
+            fontSizeDelta: FONT_SIZE,
+          ));
+}
+
+Widget printConsoleText({required String text}) {
+  return Scaffold(
+    body: Text(text),
+  );
+}
+
 String getCredentialsFromPrivateKey({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
   return SECRETS.credentials.replaceAll('@@@@@@', escaped);
@@ -80,48 +98,57 @@ bool isValidPrivateKey({required String? privateKey}) {
   }
 }
 
-ThemeData getTheme({required BuildContext context}) {
-  return new ThemeData(
-      scaffoldBackgroundColor: Colors.black,
-      textTheme: Theme.of(context).textTheme.apply(
-            fontFamily: 'ATT',
-            bodyColor: Colors.white,
-            displayColor: Colors.white,
-            fontSizeFactor: 0,
-            fontSizeDelta: FONT_SIZE,
-          ));
+DateTime getDateFromBlockRow({required List<Cell> row, required DateTime now}) {
+  final String date = now.toString().split(' ')[0];
+  Cell daysCell = row[DAY_WIDTH - 1];
+  double days = double.parse(daysCell.value);
+  int hours = getHoursFromDays(days: days);
+  int mins = getMinutesFromDays(days: days);
+  String hoursString = hours.toString().padLeft(2, '0');
+  String minsString = mins.toString().padLeft(2, '0');
+  String blockTime = '$hoursString:$minsString';
+  String blockDateString = '$date $blockTime';
+  DateTime blockDateTime = DateTime.parse(blockDateString);
+  return blockDateTime;
 }
 
-Widget handleFutureBuilderSnapshot(
-    {required BuildContext context,
-    required AsyncSnapshot<String> snapshot,
-    required FlutterSecureStorage storage}) {
-  if (snapshot.hasError) {
-    return Text('Error: ${snapshot.error}');
-  } else if (!snapshot.hasData) {
-    return Text('Awaiting.');
-  } else {
-    final privateKey = snapshot.data;
-    if (privateKey == '') {
-      print('Private key not found, sending user to form route.');
-      Future.microtask(() => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => PrivateKeyFormRoute(storage: storage)),
-          ));
+int getHoursFromDays({required double days}) {
+  return (days * 24).floor();
+}
+
+int getMinutesFromDays({required double days}) {
+  double hours = (days * 24);
+  int wholeHours = hours.floor();
+  double remainingHours = hours - wholeHours;
+  return (remainingHours * 60).round();
+}
+
+/// Return true if any cells are empty strings.
+bool hasEmptyFields({required List<Cell> row}) {
+  for (final Cell cell in row) {
+    if (cell.value == '') {
+      return true;
     }
-
-    return Text('Built diurnal!');
   }
+  return false;
 }
 
-Widget printConsoleText({required BuildContext context, required String text}) {
-  return MaterialApp(
-    theme: getTheme(context: context),
-    home: Scaffold(
-      body: Text(text),
-    ),
-  );
+/// Get the end DateTime of the block, where ``row`` is assumed to be nonempty.
+DateTime getBlockEndTime({required List<Cell> row, required DateTime now}) {
+  final DateTime startTime = getDateFromBlockRow(row: row, now: now);
+  final Duration duration = Duration(minutes: int.parse(row[MINS].value));
+  final DateTime endTime = startTime.add(duration);
+  return endTime;
+}
+
+bool isDone({required List<Cell> row}) {
+  final String doneString = row[DONE].value;
+  final double doneDecimal = double.parse(doneString);
+  final int done = doneDecimal.floor();
+  if (done == 1) {
+    return true;
+  }
+  return false;
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,15 +169,61 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
   if (!isValidPrivateKey(privateKey: privateKey)) return null;
   String credentials = getCredentialsFromPrivateKey(privateKey: privateKey!);
   final gsheets = GSheets(credentials);
-  await Future.delayed(Duration(seconds: 3));
+  await Future.delayed(Duration(seconds: 1));
   return gsheets;
+}
+
+/// Return empty list if there are no blocks with future end times.
+Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
+    {required GSheets gsheets, required DateTime now}) async {
+  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
+
+  // Get Sheet1.
+  final ss = await gsheets.spreadsheet(SECRETS.ssid);
+  Worksheet? sheet = ss.worksheetByTitle('Sheet1');
+  if (sheet == null) {
+    print('Sheet1 not found :(');
+    return null;
+  }
+  print('Got Sheet1!');
+
+  // Get rows for current day of the week.
+  final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
+  final rows = await sheet.cells.allRows(
+      fromRow: DAY_START_ROW,
+      fromColumn: startColumn,
+      length: DAY_WIDTH,
+      count: DAY_HEIGHT);
+
+  final nonEmptyRows = rows.where((row) => !hasEmptyFields(row: row)).toList();
+  final nonEmptyIncompleteRows =
+      nonEmptyRows.where((row) => !isDone(row: row)).toList();
+  print('Nonempty incomplete blocks: ${nonEmptyIncompleteRows.length}');
+
+  List<Cell>? firstIncompleteBlockWithEndTimeInFuture;
+
+  // Iterate over blocks and return as soon as we find one with future end time.
+  for (final row in nonEmptyIncompleteRows) {
+    final DateTime blockDateTime = getDateFromBlockRow(row: row, now: now);
+    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
+    if (blockEndTime.isAfter(now)) {
+      firstIncompleteBlockWithEndTimeInFuture = [...row];
+      print('Returning!');
+      return firstIncompleteBlockWithEndTimeInFuture;
+    }
+    print('block DateTime: $blockDateTime');
+  }
+
+  // Otherwise, return empty list.
+  print('No nonempty incomplete blocks with valid end times, congratulations!');
+  return [];
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // AWAITABLE HANDLERS
 
-Widget handleCandidateKey(
+void handleCandidateKey(
     {required BuildContext context,
     required FlutterSecureStorage storage,
     required String candidateKey}) {
@@ -161,11 +234,9 @@ Widget handleCandidateKey(
       MaterialPageRoute(
           builder: (context) => PrivateKeyFormRoute(storage: storage)),
     );
-    return printConsoleText(context: context, text: 'Pushed to navigator.');
-  } else {
-    print('Got private key in handler.');
-    return printConsoleText(context: context, text: 'Got private key.');
+    return;
   }
+  print('Got private key in handler.');
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -183,8 +254,29 @@ class TopLevelState extends State<TopLevel> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Diurnal(),
+      home: PaddingLayer(),
       theme: getTheme(context: context),
+    );
+  }
+}
+
+class PaddingLayer extends StatefulWidget {
+  const PaddingLayer({Key? key}) : super(key: key);
+
+  @override
+  State<PaddingLayer> createState() => PaddingLayerState();
+}
+
+class PaddingLayerState extends State<PaddingLayer> {
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final height = MediaQuery.of(context).size.height;
+    return Scaffold(
+      body: Padding(
+        padding: EdgeInsets.all(0.1 * min(width, height)),
+        child: Diurnal(),
+      ),
     );
   }
 }
@@ -197,10 +289,13 @@ class Diurnal extends StatefulWidget {
 }
 
 class DiurnalState extends State<Diurnal> {
-  final storage = new FlutterSecureStorage();
-  int numBuilds = 0;
-  String privateKey = '';
   GSheets? gsheets;
+  List<Cell>? lastBlock;
+
+  int numBuilds = 0;
+  final storage = new FlutterSecureStorage();
+  String privateKey = '';
+  DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
   @override
   Widget build(BuildContext context) {
@@ -214,24 +309,105 @@ class DiurnalState extends State<Diurnal> {
       getPrivateKey(storage: storage).then((String candidateKey) {
         handleCandidateKey(
             context: context, storage: storage, candidateKey: candidateKey);
-        setState(() {this.privateKey = candidateKey;});
+        setState(() {
+          this.privateKey = candidateKey;
+        });
       });
-      return printConsoleText(
-          context: context, text: 'Waiting for private key...');
+      return printConsoleText(text: 'Waiting for private key...');
     }
 
     if (this.gsheets == null) {
       print('Instantiating gsheets object...');
       getGSheets(storage: storage).then((GSheets? gsheets) {
-        setState(() {this.gsheets = gsheets;});
+        setState(() {
+          this.gsheets = gsheets;
+        });
       });
-      return printConsoleText(
-          context: context, text: 'Waiting for gsheets object...');
+      return printConsoleText(text: 'Waiting for gsheets object...');
     }
 
-    return printConsoleText(
-        context: context,
-        text: 'Found existing private key and constructed gsheets object.');
+    print('Getting current block...');
+    if (this.lastBlockFetchTime.add(Duration(minutes: 1)).isAfter(now)) {
+      print('Using cached block.');
+    } else {
+      print('Fetching current block from Google...');
+      getFirstIncompleteBlockWithEndTimeInFuture(
+        gsheets: gsheets!,
+        now: now,
+      ).then((List<Cell>? block) {
+        this.lastBlockFetchTime = now;
+        if (block != null && lastBlock != block) {
+          setState(() {
+            print('Updating last block state.');
+            this.lastBlock = block;
+          });
+        }
+      });
+    }
+    if (lastBlock == null) {
+      return printConsoleText(text: 'Waiting for block...');
+    }
+
+    final List<Cell> block = lastBlock!;
+    if (block.length == 0) {
+      return printConsoleText(text: 'All done for today :)');
+    }
+    final DateFormat formatter = DateFormat.Hm();
+    final DateTime blockStartTime = getDateFromBlockRow(row: block, now: now);
+    final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
+    final String blockStartStr = formatter.format(blockStartTime);
+    final String blockEndStr = formatter.format(blockEndTime);
+    final String blockDuration = '${int.parse(block[MINS].value)}min';
+    final String blockWeight = '${int.parse(block[WEIGHT].value)}N';
+
+    // Main column containing several centered rows (block, buttons, timer).
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        // Block row.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            // Title, properties, number of builds.
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                // Block title.
+                Text(block[TITLE].value),
+                // Block duration and weight.
+                Text('${blockDuration}  ${blockWeight}'),
+                // Debug number of builds.
+                Text('Number of builds: $numBuilds'),
+              ],
+            ),
+            // Start and end time.
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[Text('$blockStartStr -> $blockEndStr UTC+0')],
+            ),
+          ],
+        ),
+
+        // Pass/fail buttons.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            TextButton(
+              onPressed: () => null,
+              child: const Text('PASS'),
+            ),
+            TextButton(onPressed: null, child: const Text('FAIL')),
+          ],
+        ),
+
+        // Time remaining.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[Text('00:35')],
+        ),
+      ],
+    );
   }
 }
 
