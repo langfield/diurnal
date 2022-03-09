@@ -274,7 +274,7 @@ class PaddingLayerState extends State<PaddingLayer> {
     final height = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.all(0.1 * min(width, height)),
+        padding: EdgeInsets.all(0.05 * min(width, height)),
         child: Diurnal(),
       ),
     );
@@ -352,6 +352,12 @@ class DiurnalState extends State<Diurnal> {
     if (block.length == 0) {
       return printConsoleText(text: 'All done for today :)');
     }
+
+    const CrossAxisAlignment CROSS_START = CrossAxisAlignment.start;
+    const CrossAxisAlignment CROSS_END = CrossAxisAlignment.start;
+    const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
+    const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
+
     final DateFormat formatter = DateFormat.Hm();
     final DateTime blockStartTime = getDateFromBlockRow(row: block, now: now);
     final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
@@ -359,53 +365,34 @@ class DiurnalState extends State<Diurnal> {
     final String blockEndStr = formatter.format(blockEndTime);
     final String blockDuration = '${int.parse(block[MINS].value)}min';
     final String blockWeight = '${int.parse(block[WEIGHT].value)}N';
+    final Widget blockTitle = Text(block[TITLE].value);
+    final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
+    final Widget builds = Text('Number of builds: $numBuilds');
+    final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
+    final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
-    // Main column containing several centered rows (block, buttons, timer).
+    final Widget leftBlockColumn =
+        Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
+    final Widget rightBlockColumn =
+        Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
+    final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
+
+    final Widget passButton = TextButton(onPressed: null, child: Text('PASS'));
+    final Widget failButton = TextButton(onPressed: null, child: Text('FAIL'));
+    final List<Widget> buttons = [passButton, failButton];
+
+    final Widget timeLeft = Text('00:35');
+
+    // Main column containing centered rows (block, buttons, timer).
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: MAIN_CENTER,
       children: <Widget>[
-        // Block row.
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            // Title, properties, number of builds.
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                // Block title.
-                Text(block[TITLE].value),
-                // Block duration and weight.
-                Text('${blockDuration}  ${blockWeight}'),
-                // Debug number of builds.
-                Text('Number of builds: $numBuilds'),
-              ],
-            ),
-            // Start and end time.
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[Text('$blockStartStr -> $blockEndStr UTC+0')],
-            ),
-          ],
-        ),
-
-        // Pass/fail buttons.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            TextButton(
-              onPressed: () => null,
-              child: const Text('PASS'),
-            ),
-            TextButton(onPressed: null, child: const Text('FAIL')),
-          ],
-        ),
-
-        // Time remaining.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[Text('00:35')],
-        ),
+            mainAxisAlignment: MAIN_BETWEEN,
+            crossAxisAlignment: CROSS_START,
+            children: blockColumns),
+        Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
+        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timeLeft]),
       ],
     );
   }
