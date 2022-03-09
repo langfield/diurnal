@@ -26,7 +26,7 @@ const int LATE = 5;
 const int TIME = 6;
 const double FONT_SIZE = 30.0;
 
-const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE);
+const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
 const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
@@ -385,8 +385,10 @@ class DiurnalState extends State<Diurnal> {
         Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
     final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
 
-    final Widget passButton = TextButton(onPressed: null, child: Text('PASS'));
-    final Widget failButton = TextButton(onPressed: null, child: Text('FAIL'));
+    final pass = Text('PASS', style: STYLE);
+    final fail = Text('FAIL', style: STYLE);
+    final Widget passButton = TextButton(onPressed: null, child: pass);
+    final Widget failButton = TextButton(onPressed: null, child: fail);
     final List<Widget> buttons = [passButton, failButton];
 
     final Widget timeLeft = Text('00:35');
