@@ -24,7 +24,7 @@ const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
 const int TIME = 6;
-const double FONT_SIZE = 24.0;
+const double FONT_SIZE = 30.0;
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE);
 const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
@@ -100,13 +100,14 @@ ThemeData getTheme({required BuildContext context}) {
           ));
 }
 
-Widget buildAsyncDiurnal(BuildContext context, AsyncSnapshot<String> snapshot, FlutterSecureStorage storage) {
+Widget handleFutureBuilderSnapshot(
+    {required BuildContext context,
+    required AsyncSnapshot<String> snapshot,
+    required FlutterSecureStorage storage}) {
   if (snapshot.hasError) {
-    print('Error: ${snapshot.error}');
-    return Text('Error.');
+    return Text('Error: ${snapshot.error}');
   } else if (!snapshot.hasData) {
-    print('Awaiting for future.');
-    return Text('Waiting.');
+    return Text('Awaiting.');
   } else {
     final privateKey = snapshot.data;
     if (privateKey == '') {
@@ -135,37 +136,23 @@ class Diurnal extends StatefulWidget {
 
 class DiurnalState extends State<Diurnal> {
   final storage = new FlutterSecureStorage();
+  int numBuilds = 0;
 
   @override
   Widget build(BuildContext context) {
     print('Building Diurnal widget.');
+    var now = DateTime.now();
+    numBuilds += 1;
+    print('Num builds: $numBuilds');
     print('Attempting to get private key from secure storage...');
     return MaterialApp(
       theme: getTheme(context: context),
       home: Scaffold(
         body: FutureBuilder<String>(
           future: getPrivateKey(storage: storage),
-          builder: (BuildContext context, AsyncSnapshot<String> snapshot) {
-            if (snapshot.hasError) {
-              print('Error: ${snapshot.error}');
-              return Text('Error.');
-            } else if (!snapshot.hasData) {
-              print('Awaiting for future.');
-              return Text('Waiting.');
-            } else {
-              final privateKey = snapshot.data;
-              if (privateKey == '') {
-                print('Private key not found, sending user to form route.');
-                Future.microtask(() => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) =>
-                              PrivateKeyFormRoute(storage: storage)),
-                    ));
-              }
-              return Text('Built diurnal!');
-            }
-          },
+          builder: (BuildContext context, AsyncSnapshot<String> snapshot) =>
+              handleFutureBuilderSnapshot(
+                  context: context, snapshot: snapshot, storage: storage),
         ),
       ),
     );
