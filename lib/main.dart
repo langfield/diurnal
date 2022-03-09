@@ -50,7 +50,7 @@ final FORM_FIELD_DECORATION = InputDecoration(
 
 // Run the main app.
 void main() {
-  runApp(const Diurnal());
+  runApp(const TopLevel());
 }
 
 OutlineInputBorder getOutlineInputBorder({required Color color}) {
@@ -78,14 +78,6 @@ bool isValidPrivateKey({required String? privateKey}) {
     print('Caught error: $e');
     return false;
   }
-}
-
-Future<String> getPrivateKey({required FlutterSecureStorage storage}) async {
-  String? privateKey = await storage.read(key: KEY);
-  if (privateKey == null) {
-    return '';
-  }
-  return privateKey;
 }
 
 ThemeData getTheme({required BuildContext context}) {
@@ -123,9 +115,67 @@ Widget handleFutureBuilderSnapshot(
   }
 }
 
+Widget printConsoleText({required BuildContext context, required String text}) {
+  return MaterialApp(
+    theme: getTheme(context: context),
+    home: Scaffold(
+      body: Text(text),
+    ),
+  );
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+// AWAITABLES
+
+Future<String> getPrivateKey({required FlutterSecureStorage storage}) async {
+  String? privateKey = await storage.read(key: KEY);
+  if (privateKey == null) {
+    return '';
+  }
+  return privateKey;
+}
+
+// AWAITABLE HANDLERS
+
+Widget handleCandidateKey(
+    {required DiurnalState diurnal,
+    required BuildContext context,
+    required FlutterSecureStorage storage,
+    required String candidateKey}) {
+  if (candidateKey == '') {
+    print('Private key not found, sending user to form route.');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (context) => PrivateKeyFormRoute(storage: storage)),
+    );
+    return printConsoleText(context: context, text: 'Pushed to navigator.');
+  } else {
+    return printConsoleText(context: context, text: 'Got private key.');
+    diurnal.setState(() {
+      diurnal.privateKey = candidateKey;
+    });
+  }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // ROUTES
+
+class TopLevel extends StatefulWidget {
+  const TopLevel({Key? key}) : super(key: key);
+
+  @override
+  State<TopLevel> createState() => TopLevelState();
+}
+
+class TopLevelState extends State<TopLevel> {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(home: Diurnal());
+  }
+}
 
 class Diurnal extends StatefulWidget {
   const Diurnal({Key? key}) : super(key: key);
@@ -137,6 +187,7 @@ class Diurnal extends StatefulWidget {
 class DiurnalState extends State<Diurnal> {
   final storage = new FlutterSecureStorage();
   int numBuilds = 0;
+  String privateKey = '';
 
   @override
   Widget build(BuildContext context) {
@@ -145,17 +196,17 @@ class DiurnalState extends State<Diurnal> {
     numBuilds += 1;
     print('Num builds: $numBuilds');
     print('Attempting to get private key from secure storage...');
-    return MaterialApp(
-      theme: getTheme(context: context),
-      home: Scaffold(
-        body: FutureBuilder<String>(
-          future: getPrivateKey(storage: storage),
-          builder: (BuildContext context, AsyncSnapshot<String> snapshot) =>
-              handleFutureBuilderSnapshot(
-                  context: context, snapshot: snapshot, storage: storage),
-        ),
-      ),
-    );
+
+
+    if (privateKey == '') {
+      getPrivateKey(storage: storage).then((candidateKey) => handleCandidateKey(
+          diurnal: this,
+          context: context,
+          storage: storage,
+          candidateKey: candidateKey));
+    }
+    return printConsoleText(
+        context: context, text: 'Found existing private key.');
   }
 }
 
