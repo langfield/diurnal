@@ -2,12 +2,13 @@ import 'dart:math';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
-import 'package:logger/logger.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_countdown_timer/flutter_countdown_timer.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:diurnal/SECRETS.dart' as SECRETS;
 
@@ -377,13 +378,38 @@ class DiurnalState extends State<Diurnal> {
           storage: storage,
           candidateKey: candidateKey);
     });
+
+    // Initialise the plugin. Note ``app_icon`` needs to be a added as a
+    // drawable resource to the Android head project.
+    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('app_icon');
+    final IOSInitializationSettings initializationSettingsIOS =
+        IOSInitializationSettings();
+    final MacOSInitializationSettings initializationSettingsMacOS =
+        MacOSInitializationSettings();
+    final LinuxInitializationSettings initializationSettingsLinux =
+        LinuxInitializationSettings(defaultActionName: 'linux_notif');
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+      macOS: initializationSettingsMacOS,
+      linux: initializationSettingsLinux,
+    );
+    flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: (String? payload) async {
+      if (payload != null) {
+        print('notification payload: $payload');
+      }
+    });
   }
 
   void _refresh() {
     setState(() {});
   }
 
-  @override
   Widget build(BuildContext context) {
     print('Building Diurnal widget...');
     var now = DateTime.now();
