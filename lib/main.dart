@@ -1,11 +1,14 @@
 import 'dart:math';
 import 'dart:async';
 
+import 'package:flutter/material.dart';
+
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:gsheets/gsheets.dart';
-import 'package:flutter/material.dart';
+import 'package:confetti/confetti.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_countdown_timer/flutter_countdown_timer.dart';
 
 import 'package:diurnal/SECRETS.dart' as SECRETS;
 
@@ -230,7 +233,6 @@ Future<List<Cell>?> getCurrentBlock(
   final int pointerIndex = await getPointer(gsheets: gsheets);
   List<Cell>? currentBlock;
 
-
   // Set pointer. We skip any block with end time prior to its deadline.
   int newPointerIndex = 1;
   for (int i = 0; i < rows.length - 1; i++) {
@@ -354,6 +356,20 @@ class DiurnalState extends State<Diurnal> {
   String privateKey = '';
   DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
+  late ConfettiController _confettiController;
+
+  @override
+  void initState() {
+    super.initState();
+    const fiveSecs = Duration(seconds: 5);
+    _confettiController = ConfettiController(duration: fiveSecs);
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+  }
+
   void _refresh() {
     setState(() {});
   }
@@ -422,9 +438,18 @@ class DiurnalState extends State<Diurnal> {
     const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
     const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
 
+    DateTime getTimerEnd({required DateTime end, required DateTime now}) {
+      if (end.isBefore(now)) {
+        return now;
+      }
+      return end;
+    }
+
     final DateFormat formatter = DateFormat.Hm();
     final DateTime blockStartTime = getDateFromBlockRow(row: block, now: now);
     final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
+    final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
+    final int timerEndMilli = timerEnd.millisecondsSinceEpoch;
     final String blockStartStr = formatter.format(blockStartTime);
     final String blockEndStr = formatter.format(blockEndTime);
     final String blockDuration = '${int.parse(block[MINS].value)}min';
@@ -434,6 +459,8 @@ class DiurnalState extends State<Diurnal> {
     final Widget builds = Text('Number of builds: $numBuilds');
     final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
+
+    final timer = CountdownTimer(endTime: timerEndMilli);
 
     final Widget leftBlockColumn =
         Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
@@ -465,7 +492,6 @@ class DiurnalState extends State<Diurnal> {
         onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 0.0),
         child: fail);
     final List<Widget> buttons = [passButton, failButton];
-    final Widget timeLeft = Text('00:35');
 
     // Main column containing centered rows (block, buttons, timer).
     return Column(
@@ -476,7 +502,7 @@ class DiurnalState extends State<Diurnal> {
             crossAxisAlignment: CROSS_START,
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
-        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timeLeft]),
+        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
       ],
     );
   }
