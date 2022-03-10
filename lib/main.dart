@@ -359,6 +359,7 @@ class Diurnal extends StatefulWidget {
 class DiurnalState extends State<Diurnal> {
   GSheets? gsheets;
   List<Cell>? lastBlock;
+  FlutterLocalNotificationsPlugin? flutterLocalNotificationsPlugin;
 
   int numBuilds = 0;
   bool forceFetch = false;
@@ -404,6 +405,24 @@ class DiurnalState extends State<Diurnal> {
         print('notification payload: $payload');
       }
     });
+    this.flutterLocalNotificationsPlugin = flutterLocalNotificationsPlugin;
+  }
+
+  Future<void> _showNotif() async {
+    print('_showNotif called.');
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails('your channel id', 'your channel name',
+            channelDescription: 'your channel description',
+            importance: Importance.max,
+            priority: Priority.high,
+            ticker: 'ticker');
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    await this.flutterLocalNotificationsPlugin!.show(
+        0, 'plain title', 'plain body', platformChannelSpecifics,
+        payload: 'item x');
+    print('sent notif.');
+    setState(() {});
   }
 
   void _refresh() {
@@ -485,8 +504,11 @@ class DiurnalState extends State<Diurnal> {
     final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
-    final timer = CountdownTimer(endTime: timerEndMilli);
-
+    Widget timer = CountdownTimer(endTime: timerEndMilli, onEnd: _showNotif);
+    final staticTimer = Text('00:00:00');
+    if (timerEndMilli <= 0) {
+      timer = staticTimer;
+    }
     final Widget leftBlockColumn =
         Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
     final Widget rightBlockColumn =
