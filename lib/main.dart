@@ -361,13 +361,14 @@ class DiurnalState extends State<Diurnal> {
   @override
   void initState() {
     super.initState();
-    const fiveSecs = Duration(seconds: 5);
+    const fiveSecs = Duration(seconds: 1);
     _confettiController = ConfettiController(duration: fiveSecs);
   }
 
   @override
   void dispose() {
     _confettiController.dispose();
+    super.dispose();
   }
 
   void _refresh() {
@@ -468,6 +469,16 @@ class DiurnalState extends State<Diurnal> {
         Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
     final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
 
+    final Widget confetti = ConfettiWidget(
+      confettiController: _confettiController,
+      blastDirection: -pi / 2,
+      emissionFrequency: 0.003,
+      numberOfParticles: 20,
+      maxBlastForce: 40,
+      minBlastForce: 20,
+      gravity: 0.3,
+    );
+
     Cell doneCell = block[DONE];
 
     void doneHandler({required Cell doneCell, required double doneProportion}) {
@@ -480,6 +491,9 @@ class DiurnalState extends State<Diurnal> {
           this.forceFetch = true;
         });
       });
+      if (doneProportion > 0) {
+        _confettiController.play();
+      }
       return;
     }
 
@@ -503,6 +517,10 @@ class DiurnalState extends State<Diurnal> {
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
         Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
+        Row(
+            mainAxisAlignment: MAIN_CENTER,
+            crossAxisAlignment: CROSS_END,
+            children: <Widget>[confetti]),
       ],
     );
   }
