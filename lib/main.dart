@@ -28,6 +28,7 @@ const int MINS = 4;
 const int LATE = 5;
 const int TIME = 6;
 const double FONT_SIZE = 30.0;
+const Duration LEEWAY = Duration(minutes: 5);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
 const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
@@ -208,28 +209,59 @@ Future<bool> setPointer(
 /// Return empty list if there are no blocks with future end times.
 Future<List<Cell>?> getCurrentBlock(
     {required GSheets gsheets, required DateTime now}) async {
-
   Worksheet sheet = await getWorksheet(gsheets: gsheets);
 
   // Get rows for current day of the week.
   final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
-  final rows = await sheet.cells.allRows(
+  List<List<Cell>> rows = await sheet.cells.allRows(
       fromRow: DAY_START_ROW,
       fromColumn: startColumn,
       length: DAY_WIDTH,
       count: DAY_HEIGHT);
 
   // Filter out blocks with empty cells and blocks that are done.
-  final nonEmptyRows = rows.where((row) => !hasEmptyFields(row: row)).toList();
-  final nonEmptyIncompleteRows =
-      nonEmptyRows.where((row) => !isDone(row: row)).toList();
-  print('Nonempty incomplete blocks: ${nonEmptyIncompleteRows.length}');
+  rows = rows.where((row) => !hasEmptyFields(row: row)).toList();
+  rows = rows.where((row) => !isDone(row: row)).toList();
 
-  // Iterate over blocks and return as soon as we find one with future end time.
   final int pointerIndex = await getPointer(gsheets: gsheets);
   List<Cell>? currentBlock;
-  for (final row in nonEmptyIncompleteRows) {
-    final DateTime blockDateTime = getDateFromBlockRow(row: row, now: now);
+
+  // Iterate over blocks and return next block to display.
+
+  // Get index of first valid block with end time in future.
+  int futureBlockIndex = pointerIndex;
+  DateTime futureBlockEndTime = DateTime.utc(1903);
+  for (final List<Cell> row in rows) {
+    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
+    final int rowIndex = row[0].row;
+    if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
+      futureBlockIndex = rowIndex;
+    }
+  }
+
+  // Set pointer. We skip any block with end time prior to its deadline.
+  int newPointerIndex = 1;
+  for (final List<Cell> row in rows) {
+    final int rowIndex = row[0].row;
+    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
+    final DateTime blockEndTimeWithLeeway = blockEndTime.add(LEEWAY);
+    final List<DateTime> dates = [blockEndTimeWithLeeway, futureBlockEndTime];
+
+    // Take maximum of ``dates``.
+    final deadline = dates.reduce((a, b) => a.isAfter(b) ? a : b);
+    if (blockEndTime.isAfter(deadline)) {
+      newPointerIndex = rowIndex;
+    }
+  }
+
+  // Increment pointer to new index.
+  if (pointerIndex < newPointerIndex) {
+    print('Incrementing row pointer: ${pointerIndex} -> ${newPointerIndex}');
+    await setPointer(gsheets: gsheets, rowIndex: newPointerIndex);
+  }
+
+  // Get index of first valid block with end time in future.
+  for (final List<Cell> row in rows) {
     final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
     final int rowIndex = row[0].row;
     if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
@@ -237,7 +269,6 @@ Future<List<Cell>?> getCurrentBlock(
       print('Returning!');
       return currentBlock;
     }
-    print('block DateTime: $blockDateTime');
   }
 
   // Otherwise, return empty list.
