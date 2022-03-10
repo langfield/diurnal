@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:gsheets/gsheets.dart';
-import 'package:confetti/confetti.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_countdown_timer/flutter_countdown_timer.dart';
 
@@ -356,19 +355,25 @@ class DiurnalState extends State<Diurnal> {
   String privateKey = '';
   DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
-  late ConfettiController _confettiController;
-
   @override
   void initState() {
     super.initState();
-    const fiveSecs = Duration(seconds: 1);
-    _confettiController = ConfettiController(duration: fiveSecs);
-  }
 
-  @override
-  void dispose() {
-    _confettiController.dispose();
-    super.dispose();
+    print('Getting private key from secure storage...');
+    getPrivateKey(storage: storage).then((String candidateKey) {
+      handleCandidateKey(
+          diurnal: this,
+          context: context,
+          storage: storage,
+          candidateKey: candidateKey);
+    });
+
+    print('Instantiating gsheets object...');
+    getGSheets(storage: storage).then((GSheets? gsheets) {
+      setState(() {
+        this.gsheets = gsheets;
+      });
+    });
   }
 
   void _refresh() {
@@ -382,25 +387,7 @@ class DiurnalState extends State<Diurnal> {
     numBuilds += 1;
     print('Num builds: $numBuilds');
 
-    if (privateKey == '') {
-      print('Getting private key from secure storage...');
-      getPrivateKey(storage: storage).then((String candidateKey) {
-        handleCandidateKey(
-            diurnal: this,
-            context: context,
-            storage: storage,
-            candidateKey: candidateKey);
-      });
-      return printConsoleText(text: 'Waiting for private key...');
-    }
-
     if (this.gsheets == null) {
-      print('Instantiating gsheets object...');
-      getGSheets(storage: storage).then((GSheets? gsheets) {
-        setState(() {
-          this.gsheets = gsheets;
-        });
-      });
       return printConsoleText(text: 'Waiting for gsheets object...');
     }
 
@@ -469,16 +456,6 @@ class DiurnalState extends State<Diurnal> {
         Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
     final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
 
-    final Widget confetti = ConfettiWidget(
-      confettiController: _confettiController,
-      blastDirection: -pi / 2,
-      emissionFrequency: 0.003,
-      numberOfParticles: 20,
-      maxBlastForce: 40,
-      minBlastForce: 20,
-      gravity: 0.3,
-    );
-
     Cell doneCell = block[DONE];
 
     void doneHandler({required Cell doneCell, required double doneProportion}) {
@@ -491,9 +468,6 @@ class DiurnalState extends State<Diurnal> {
           this.forceFetch = true;
         });
       });
-      if (doneProportion > 0) {
-        _confettiController.play();
-      }
       return;
     }
 
@@ -517,10 +491,6 @@ class DiurnalState extends State<Diurnal> {
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
         Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
-        Row(
-            mainAxisAlignment: MAIN_CENTER,
-            crossAxisAlignment: CROSS_END,
-            children: <Widget>[confetti]),
       ],
     );
   }
