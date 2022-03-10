@@ -14,9 +14,12 @@ import 'package:diurnal/SECRETS.dart' as SECRETS;
 // CONSTANTS
 
 const String KEY = 'PRIVATE_KEY';
+const String POINTER = '*';
 const int DAY_WIDTH = 7;
 const int DAY_HEIGHT = 74;
 const int DAY_START_ROW = 2;
+const int POINTER_COLUMN = 50;
+const int POINTER_COLUMN_START_ROW = 1;
 const int TITLE = 0;
 const int DONE = 1;
 const int WEIGHT = 2;
@@ -173,19 +176,40 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
   return gsheets;
 }
 
-/// Return empty list if there are no blocks with future end times.
-Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
-    {required GSheets gsheets, required DateTime now}) async {
-  var logger = Logger(printer: PrettyPrinter(methodCount: 0));
-
-  // Get Sheet1.
+Future<Worksheet> getWorksheet({required GSheets gsheets}) async {
   final ss = await gsheets.spreadsheet(SECRETS.ssid);
   Worksheet? sheet = ss.worksheetByTitle('Sheet1');
-  if (sheet == null) {
-    print('Sheet1 not found :(');
-    return null;
-  }
-  print('Got Sheet1!');
+  if (sheet == null) throw Exception('Sheet1 not found :(');
+  return sheet;
+}
+
+Future<int> getPointer({required GSheets gsheets}) async {
+  Worksheet sheet = await getWorksheet(gsheets: gsheets);
+  final List<Cell>? column = await sheet.cells.column(POINTER_COLUMN,
+      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
+  final List<String>? columnValues = await sheet.values.column(POINTER_COLUMN,
+      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
+  final int index = columnValues!.indexOf(POINTER);
+  if (index == -1) return 0;
+  final Cell pointerCell = column![index];
+  return pointerCell.row;
+}
+
+Future<bool> setPointer(
+    {required GSheets gsheets, required int rowIndex}) async {
+  Worksheet sheet = await getWorksheet(gsheets: gsheets);
+  await sheet.clearColumn(POINTER_COLUMN,
+      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
+  Cell newPointer =
+      await sheet.cells.cell(row: rowIndex, column: POINTER_COLUMN);
+  return await newPointer.post(POINTER);
+}
+
+/// Return empty list if there are no blocks with future end times.
+Future<List<Cell>?> getCurrentBlock(
+    {required GSheets gsheets, required DateTime now}) async {
+
+  Worksheet sheet = await getWorksheet(gsheets: gsheets);
 
   // Get rows for current day of the week.
   final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
@@ -195,21 +219,23 @@ Future<List<Cell>?> getFirstIncompleteBlockWithEndTimeInFuture(
       length: DAY_WIDTH,
       count: DAY_HEIGHT);
 
+  // Filter out blocks with empty cells and blocks that are done.
   final nonEmptyRows = rows.where((row) => !hasEmptyFields(row: row)).toList();
   final nonEmptyIncompleteRows =
       nonEmptyRows.where((row) => !isDone(row: row)).toList();
   print('Nonempty incomplete blocks: ${nonEmptyIncompleteRows.length}');
 
-  List<Cell>? firstIncompleteBlockWithEndTimeInFuture;
-
   // Iterate over blocks and return as soon as we find one with future end time.
+  final int pointerIndex = await getPointer(gsheets: gsheets);
+  List<Cell>? currentBlock;
   for (final row in nonEmptyIncompleteRows) {
     final DateTime blockDateTime = getDateFromBlockRow(row: row, now: now);
     final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
-    if (blockEndTime.isAfter(now)) {
-      firstIncompleteBlockWithEndTimeInFuture = [...row];
+    final int rowIndex = row[0].row;
+    if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
+      currentBlock = [...row];
       print('Returning!');
-      return firstIncompleteBlockWithEndTimeInFuture;
+      return currentBlock;
     }
     print('block DateTime: $blockDateTime');
   }
@@ -342,7 +368,7 @@ class DiurnalState extends State<Diurnal> {
       print('Using cached block.');
     } else {
       print('Fetching current block from Google...');
-      getFirstIncompleteBlockWithEndTimeInFuture(
+      getCurrentBlock(
         gsheets: gsheets!,
         now: now,
       ).then((List<Cell>? block) {
@@ -390,18 +416,16 @@ class DiurnalState extends State<Diurnal> {
     final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
 
     Cell doneCell = block[DONE];
-    void passHandler({required Cell doneCell}) {
-      doneCell.post('1');
-      setState(() {
-        this.forceFetch = true;
-      });
-      return;
-    }
 
-    void failHandler({required Cell doneCell}) {
-      doneCell.post('0');
-      setState(() {
-        this.forceFetch = true;
+    void doneHandler({required Cell doneCell, required double doneProportion}) {
+      var doneFuture = doneCell.post(doneProportion);
+      var pointerFuture =
+          setPointer(gsheets: this.gsheets!, rowIndex: doneCell.row);
+      List<Future> futures = [doneFuture, pointerFuture];
+      Future.wait(futures).then((_) {
+        setState(() {
+          this.forceFetch = true;
+        });
       });
       return;
     }
@@ -409,11 +433,12 @@ class DiurnalState extends State<Diurnal> {
     final pass = Text('PASS', style: STYLE);
     final fail = Text('FAIL', style: STYLE);
     final Widget passButton = TextButton(
-        onPressed: () => passHandler(doneCell: doneCell), child: pass);
+        onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 1.0),
+        child: pass);
     final Widget failButton = TextButton(
-        onPressed: () => failHandler(doneCell: doneCell), child: fail);
+        onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 0.0),
+        child: fail);
     final List<Widget> buttons = [passButton, failButton];
-
     final Widget timeLeft = Text('00:35');
 
     // Main column containing centered rows (block, buttons, timer).
