@@ -30,7 +30,7 @@ const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
 const int TIME = 6;
-const double FONT_SIZE = 30.0;
+const double FONT_SIZE = 15.0;
 const Duration LEEWAY = Duration(minutes: 3);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
