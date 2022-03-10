@@ -377,7 +377,6 @@ class DiurnalState extends State<Diurnal> {
           storage: storage,
           candidateKey: candidateKey);
     });
-
   }
 
   void _refresh() {
@@ -493,6 +492,13 @@ class DiurnalState extends State<Diurnal> {
         child: fail);
     final List<Widget> buttons = [passButton, failButton];
 
+    final Widget clearKeyButton = TextButton(
+        onPressed: () {
+          storage.delete(key: KEY);
+          print('Deleted private key!');
+        },
+        child: const Text('CLEAR KEY', style: STYLE));
+
     // Main column containing centered rows (block, buttons, timer).
     return Column(
       mainAxisAlignment: MAIN_CENTER,
@@ -503,6 +509,7 @@ class DiurnalState extends State<Diurnal> {
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
         Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
+        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[clearKeyButton]),
       ],
     );
   }
