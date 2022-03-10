@@ -157,6 +157,16 @@ bool isDone({required List<Cell> row}) {
   return false;
 }
 
+String? validatePrivateKey(String? candidate) {
+  if (candidate == null || candidate.isEmpty) {
+    return 'Empty private key';
+  }
+  if (!isValidPrivateKey(privateKey: candidate)) {
+    return 'Bad private key';
+  }
+  return null;
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // AWAITABLES
@@ -368,12 +378,6 @@ class DiurnalState extends State<Diurnal> {
           candidateKey: candidateKey);
     });
 
-    print('Instantiating gsheets object...');
-    getGSheets(storage: storage).then((GSheets? gsheets) {
-      setState(() {
-        this.gsheets = gsheets;
-      });
-    });
   }
 
   void _refresh() {
@@ -388,6 +392,14 @@ class DiurnalState extends State<Diurnal> {
     print('Num builds: $numBuilds');
 
     if (this.gsheets == null) {
+      print('Instantiating gsheets object...');
+      getGSheets(storage: storage).then((GSheets? gsheets) {
+        if (gsheets != null) {
+          setState(() {
+            this.gsheets = gsheets;
+          });
+        }
+      });
       return printConsoleText(text: 'Waiting for gsheets object...');
     }
 
@@ -522,38 +534,32 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   @override
   Widget build(BuildContext context) {
     print('Building private key form route.');
-    return Scaffold(
-        body: Column(children: <Widget>[
-      Form(
-        key: _formKey,
-        child: TextFormField(
-          validator: (candidate) {
-            if (candidate == null || candidate.isEmpty) {
-              return 'Empty private key';
-            }
-            if (!isValidPrivateKey(privateKey: candidate)) {
-              return 'Bad private key';
-            }
-            return null;
-          },
-          controller: controller,
-          maxLines: 20,
-          decoration: FORM_FIELD_DECORATION,
-        ),
-      ),
-      TextButton(
-        onPressed: () async {
-          final privateKey = controller.text;
-          if (_formKey.currentState!.validate()) {
-            await widget.storage.write(key: KEY, value: privateKey);
-            widget.refresh();
-            Navigator.pop(context);
-          } else {
-            print('Failed to validate input: $privateKey');
-          }
-        },
-        child: const Text('Submit'),
-      )
-    ]));
+
+    void submitKey() async {
+      final privateKey = this.controller.text;
+      if (this._formKey.currentState!.validate()) {
+        await widget.storage.write(key: KEY, value: privateKey);
+        widget.refresh();
+        Navigator.pop(context);
+      } else {
+        print('Failed to validate input: $privateKey');
+      }
+    }
+
+    var textFormField = TextFormField(
+      validator: validatePrivateKey,
+      controller: controller,
+      maxLines: 20,
+      decoration: FORM_FIELD_DECORATION,
+    );
+
+    var form = Form(key: _formKey, child: textFormField);
+    var expForm = Expanded(child: form);
+    var submit = Text('Submit');
+    var submitButton = TextButton(onPressed: submitKey, child: submit);
+    var expSubmitButton = Expanded(child: submitButton);
+    var formColumn = Column(children: <Widget>[expForm, expSubmitButton]);
+
+    return Scaffold(body: formColumn);
   }
 }
