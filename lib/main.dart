@@ -2,7 +2,6 @@ import 'dart:math';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
 import 'package:gsheets/gsheets.dart';
@@ -10,7 +9,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_countdown_timer/flutter_countdown_timer.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import 'package:diurnal/SECRETS.dart' as SECRETS;
+import 'package:diurnal/SECRETS.dart' as secrets;
+
+// ignore_for_file: constant_identifier_names
+// ignore_for_file: avoid_print
+// ignore_for_file: unnecessary_brace_in_string_interps
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -38,7 +41,7 @@ const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
 
-final FORM_FIELD_DECORATION = InputDecoration(
+final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
   focusedBorder: getOutlineInputBorder(color: Colors.white),
@@ -68,7 +71,7 @@ OutlineInputBorder getOutlineInputBorder({required Color color}) {
 }
 
 ThemeData getTheme({required BuildContext context}) {
-  return new ThemeData(
+  return ThemeData(
       scaffoldBackgroundColor: Colors.black,
       textTheme: Theme.of(context).textTheme.apply(
             fontFamily: 'ATT',
@@ -87,7 +90,7 @@ Widget printConsoleText({required String text}) {
 
 String getCredentialsFromPrivateKey({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
-  return SECRETS.credentials.replaceAll('@@@@@@', escaped);
+  return secrets.credentials.replaceAll('@@@@@@', escaped);
 }
 
 // Validate private key by attempting to construct ``GSheets`` instance.
@@ -191,7 +194,7 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
 }
 
 Future<Worksheet> getWorksheet({required GSheets gsheets}) async {
-  final ss = await gsheets.spreadsheet(SECRETS.ssid);
+  final ss = await gsheets.spreadsheet(secrets.ssid);
   Worksheet? sheet = ss.worksheetByTitle('Sheet1');
   if (sheet == null) throw Exception('Sheet1 not found :(');
   return sheet;
@@ -222,11 +225,11 @@ Future<bool> setPointer(
 /// Return empty list if there are no blocks with future end times.
 Future<List<Cell>?> getCurrentBlock(
     {required GSheets gsheets, required DateTime now}) async {
-  print('Fetching worksheet...');
+  print('    Fetching worksheet...');
   Worksheet sheet = await getWorksheet(gsheets: gsheets);
 
   // Get rows for current day of the week.
-  print('Fetching row matrix...');
+  print('    Fetching row matrix...');
   final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
   List<List<Cell>> rows = await sheet.cells.allRows(
       fromRow: DAY_START_ROW,
@@ -235,11 +238,11 @@ Future<List<Cell>?> getCurrentBlock(
       count: DAY_HEIGHT);
 
   // Filter out blocks with empty cells and blocks that are done.
-  print('Filtering rows...');
+  print('    Filtering rows...');
   rows = rows.where((row) => !hasEmptyFields(row: row)).toList();
   rows = rows.where((row) => !isDone(row: row)).toList();
 
-  print('Getting pointer...');
+  print('    Getting pointer...');
   final int pointerIndex = await getPointer(gsheets: gsheets);
   List<Cell>? currentBlock;
 
@@ -262,7 +265,7 @@ Future<List<Cell>?> getCurrentBlock(
   }
 
   // Increment pointer to new index.
-  print('Incrementing row pointer: ${pointerIndex} -> ${newPointerIndex}');
+  print('    Incrementing row pointer: ${pointerIndex} -> ${newPointerIndex}');
   if (pointerIndex < newPointerIndex) {
     await setPointer(gsheets: gsheets, rowIndex: newPointerIndex);
   }
@@ -273,38 +276,14 @@ Future<List<Cell>?> getCurrentBlock(
     final int rowIndex = row[0].row;
     if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
       currentBlock = [...row];
-      print('Returning!');
+      print('    Returning!');
       return currentBlock;
     }
   }
 
   // Otherwise, return empty list.
-  print('No nonempty incomplete blocks with valid end times, congratulations!');
+  print('    No nonempty incomplete blocks with valid end times, congratulations!');
   return [];
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// AWAITABLE HANDLERS
-
-void handleCandidateKey(
-    {required DiurnalState diurnal,
-    required BuildContext context,
-    required FlutterSecureStorage storage,
-    required String candidateKey}) {
-  if (candidateKey == '') {
-    print('Private key not found, sending user to form route.');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-          builder: (context) =>
-              PrivateKeyFormRoute(storage: storage, refresh: diurnal._refresh)),
-    );
-    return;
-  }
-  diurnal.setState(() {
-    diurnal.privateKey = candidateKey;
-  });
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -357,26 +336,26 @@ class Diurnal extends StatefulWidget {
 }
 
 class DiurnalState extends State<Diurnal> {
-  GSheets? gsheets;
-  List<Cell>? lastBlock;
-  FlutterLocalNotificationsPlugin? flutterLocalNotificationsPlugin;
+  GSheets? _gsheets;
+  List<Cell>? _lastBlock;
+  FlutterLocalNotificationsPlugin? _flutterLocalNotificationsPlugin;
 
-  int numBuilds = 0;
-  bool forceFetch = false;
-  final storage = new FlutterSecureStorage();
-  String privateKey = '';
-  DateTime lastBlockFetchTime = DateTime.utc(1944, 6, 6);
+  int _numBuilds = 0;
+  bool _forceFetch = false;
+  bool _gsheetsInitLock = false;
+  bool _getCurrentBlockLock = false;
+  final _storage = FlutterSecureStorage();
+  DateTime _lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
   @override
   void initState() {
     super.initState();
 
-    print('Getting private key from secure storage...');
-    getPrivateKey(storage: storage).then((String candidateKey) {
+    print('initState:Getting private key from secure storage...');
+    getPrivateKey(storage: _storage).then((String candidateKey) {
       handleCandidateKey(
-          diurnal: this,
           context: context,
-          storage: storage,
+          storage: _storage,
           candidateKey: candidateKey);
     });
 
@@ -405,7 +384,25 @@ class DiurnalState extends State<Diurnal> {
         print('notification payload: $payload');
       }
     });
-    this.flutterLocalNotificationsPlugin = flutterLocalNotificationsPlugin;
+    _flutterLocalNotificationsPlugin = flutterLocalNotificationsPlugin;
+  }
+
+  void handleCandidateKey(
+      {required BuildContext context,
+        required FlutterSecureStorage storage,
+        required String candidateKey}) {
+    if (candidateKey == '') {
+      print('    Private key not found, sending user to form route.');
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) =>
+                PrivateKeyFormRoute(storage: storage, refresh: _refresh)),
+      );
+      return;
+    }
+    print('    Calling setState from candidate key handler...');
+    setState(() {});
   }
 
   Future<void> _showNotif() async {
@@ -418,7 +415,7 @@ class DiurnalState extends State<Diurnal> {
             ticker: 'ticker');
     const NotificationDetails platformChannelSpecifics =
         NotificationDetails(android: androidPlatformChannelSpecifics);
-    await this.flutterLocalNotificationsPlugin!.show(
+    await _flutterLocalNotificationsPlugin!.show(
         0, 'plain title', 'plain body', platformChannelSpecifics,
         payload: 'item x');
     print('sent notif.');
@@ -429,51 +426,67 @@ class DiurnalState extends State<Diurnal> {
     setState(() {});
   }
 
+  @override
   Widget build(BuildContext context) {
-    print('Building Diurnal widget...');
-    var now = DateTime.now();
-    numBuilds += 1;
-    print('Num builds: $numBuilds');
+    // Get a seed for this build for debugging.
+    final rng = Random();
+    final int seed = rng.nextInt(1000);
 
-    if (this.gsheets == null) {
-      print('Instantiating gsheets object...');
-      getGSheets(storage: storage).then((GSheets? gsheets) {
-        if (gsheets != null) {
-          setState(() {
-            this.gsheets = gsheets;
-          });
-        }
-      });
+    print('Rebuilding "Diurnal:${seed}"...');
+    var now = DateTime.now();
+    _numBuilds += 1;
+    print('${seed}:Num builds: $_numBuilds');
+
+    if (_gsheets == null) {
+      if (!_gsheetsInitLock) {
+        _gsheetsInitLock = true;
+        print('${seed}:Instantiating gsheets object...');
+        getGSheets(storage: _storage).then((GSheets? gsheets) {
+          _gsheetsInitLock = false;
+          if (gsheets != null) {
+            setState(() {
+              _gsheets = gsheets;
+            });
+          }
+        });
+      } else {
+        print('${seed}:Gsheets object already being initialized.');
+      }
       return printConsoleText(text: 'Waiting for gsheets object...');
     }
 
-    print('Getting current block...');
+    if (_getCurrentBlockLock) {
+      print('${seed}:Already fetching current block...');
+      return printConsoleText(text: 'Waiting for block...');
+    }
     const oneMin = Duration(minutes: 1);
-    final bool tooSoon = this.lastBlockFetchTime.add(oneMin).isAfter(now);
-    if (tooSoon && !forceFetch) {
-      print('Using cached block.');
+    final bool tooSoon = _lastBlockFetchTime.add(oneMin).isAfter(now);
+    if (tooSoon && !_forceFetch) {
+      print('${seed}:Got cached block.');
     } else {
-      print('Fetching current block from Google...');
+      _getCurrentBlockLock = true;
+      print('${seed}:Fetching current block from Google...');
       getCurrentBlock(
-        gsheets: gsheets!,
+        gsheets: _gsheets!,
         now: now,
       ).then((List<Cell>? block) {
-        this.lastBlockFetchTime = now;
-        if (block != null && lastBlock != block) {
+        _getCurrentBlockLock = false;
+        _lastBlockFetchTime = now;
+        if (block != null && _lastBlock != block) {
           setState(() {
-            print('Updating last block state.');
-            this.lastBlock = block;
+            print('${seed}:Updating last block state.');
+            _lastBlock = block;
           });
         }
       });
-      this.forceFetch = false;
+      _forceFetch = false;
     }
-    if (lastBlock == null) {
+    if (_lastBlock == null) {
       return printConsoleText(text: 'Waiting for block...');
     }
 
-    final List<Cell> block = lastBlock!;
-    if (block.length == 0) {
+    final List<Cell> block = _lastBlock!;
+    if (block.isEmpty) {
       return printConsoleText(text: 'All done for today :)');
     }
 
@@ -500,7 +513,7 @@ class DiurnalState extends State<Diurnal> {
     final String blockWeight = '${int.parse(block[WEIGHT].value)}N';
     final Widget blockTitle = Text(block[TITLE].value);
     final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
-    final Widget builds = Text('Number of builds: $numBuilds');
+    final Widget builds = Text('Number of builds: $_numBuilds');
     final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
@@ -520,11 +533,11 @@ class DiurnalState extends State<Diurnal> {
     void doneHandler({required Cell doneCell, required double doneProportion}) {
       var doneFuture = doneCell.post(doneProportion);
       var pointerFuture =
-          setPointer(gsheets: this.gsheets!, rowIndex: doneCell.row);
-      List<Future> futures = [doneFuture, pointerFuture];
+          setPointer(gsheets: _gsheets!, rowIndex: doneCell.row);
+      List<Future<bool>> futures = [doneFuture, pointerFuture];
       Future.wait(futures).then((_) {
         setState(() {
-          this.forceFetch = true;
+          _forceFetch = true;
         });
       });
       return;
@@ -542,7 +555,7 @@ class DiurnalState extends State<Diurnal> {
 
     final Widget clearKeyButton = TextButton(
         onPressed: () {
-          storage.delete(key: KEY);
+          _storage.delete(key: KEY);
           print('Deleted private key!');
         },
         child: const Text('CLEAR KEY', style: STYLE));
@@ -591,8 +604,8 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
     print('Building private key form route.');
 
     void submitKey() async {
-      final privateKey = this.controller.text;
-      if (this._formKey.currentState!.validate()) {
+      final privateKey = controller.text;
+      if (_formKey.currentState!.validate()) {
         await widget.storage.write(key: KEY, value: privateKey);
         widget.refresh();
         Navigator.pop(context);
@@ -605,7 +618,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
       validator: validatePrivateKey,
       controller: controller,
       maxLines: 20,
-      decoration: FORM_FIELD_DECORATION,
+      decoration: formFieldDecoration,
     );
 
     var form = Form(key: _formKey, child: textFormField);
