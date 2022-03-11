@@ -41,6 +41,15 @@ const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
 
+const AndroidNotificationDetails ANDROID_DETAILS = AndroidNotificationDetails(
+    'your channel id', 'your channel name',
+    channelDescription: 'your channel description',
+    importance: Importance.max,
+    priority: Priority.high,
+    ticker: 'ticker');
+const NotificationDetails NOTIFICATION_DETAILS =
+    NotificationDetails(android: ANDROID_DETAILS);
+
 final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
@@ -50,7 +59,7 @@ final formFieldDecoration = InputDecoration(
   helperStyle: STYLE,
   helperText: " ",
   hintText: 'Service account private key',
-  hintStyle: TextStyle(color: TRANSLUCENT_WHITE),
+  hintStyle: const TextStyle(color: TRANSLUCENT_WHITE),
   floatingLabelBehavior: FloatingLabelBehavior.never,
 );
 
@@ -189,7 +198,7 @@ Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
   if (!isValidPrivateKey(privateKey: privateKey)) return null;
   String credentials = getCredentialsFromPrivateKey(privateKey: privateKey!);
   final gsheets = GSheets(credentials);
-  await Future.delayed(Duration(seconds: 1));
+  await Future.delayed(const Duration(seconds: 1));
   return gsheets;
 }
 
@@ -223,7 +232,7 @@ Future<bool> setPointer(
 }
 
 /// Return empty list if there are no blocks with future end times.
-Future<List<Cell>?> getCurrentBlock(
+Future<List<Cell>> getCurrentBlock(
     {required GSheets gsheets, required DateTime now}) async {
   print('    Fetching worksheet...');
   Worksheet sheet = await getWorksheet(gsheets: gsheets);
@@ -244,7 +253,6 @@ Future<List<Cell>?> getCurrentBlock(
 
   print('    Getting pointer...');
   final int pointerIndex = await getPointer(gsheets: gsheets);
-  List<Cell>? currentBlock;
 
   // Set pointer. We skip any block with end time prior to its deadline.
   int newPointerIndex = 1;
@@ -271,18 +279,18 @@ Future<List<Cell>?> getCurrentBlock(
   }
 
   // Iterate over blocks and return next block to display.
-  for (final List<Cell> row in rows) {
+  for (List<Cell> row in rows) {
     final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
     final int rowIndex = row[0].row;
     if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
-      currentBlock = [...row];
-      print('    Returning!');
+      final List<Cell> currentBlock = [...row];
+      print('    Found current block!');
       return currentBlock;
     }
   }
 
   // Otherwise, return empty list.
-  print('    No nonempty incomplete blocks with valid end times, congratulations!');
+  print('    No more incomplete blocks, congratulations!');
   return [];
 }
 
@@ -301,7 +309,7 @@ class TopLevelState extends State<TopLevel> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: PaddingLayer(),
+      home: const PaddingLayer(),
       theme: getTheme(context: context),
     );
   }
@@ -322,7 +330,7 @@ class PaddingLayerState extends State<PaddingLayer> {
     return Scaffold(
       body: Padding(
         padding: EdgeInsets.all(0.05 * min(width, height)),
-        child: Diurnal(),
+        child: const Diurnal(),
       ),
     );
   }
@@ -344,7 +352,7 @@ class DiurnalState extends State<Diurnal> {
   bool _forceFetch = false;
   bool _gsheetsInitLock = false;
   bool _getCurrentBlockLock = false;
-  final _storage = FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage();
   DateTime _lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
   @override
@@ -354,9 +362,7 @@ class DiurnalState extends State<Diurnal> {
     print('initState:Getting private key from secure storage...');
     getPrivateKey(storage: _storage).then((String candidateKey) {
       handleCandidateKey(
-          context: context,
-          storage: _storage,
-          candidateKey: candidateKey);
+          context: context, storage: _storage, candidateKey: candidateKey);
     });
 
     // Initialise the plugin. Note ``app_icon`` needs to be a added as a
@@ -365,13 +371,13 @@ class DiurnalState extends State<Diurnal> {
         FlutterLocalNotificationsPlugin();
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('app_icon');
-    final IOSInitializationSettings initializationSettingsIOS =
+    const IOSInitializationSettings initializationSettingsIOS =
         IOSInitializationSettings();
-    final MacOSInitializationSettings initializationSettingsMacOS =
+    const MacOSInitializationSettings initializationSettingsMacOS =
         MacOSInitializationSettings();
-    final LinuxInitializationSettings initializationSettingsLinux =
+    const LinuxInitializationSettings initializationSettingsLinux =
         LinuxInitializationSettings(defaultActionName: 'linux_notif');
-    final InitializationSettings initializationSettings =
+    const InitializationSettings initializationSettings =
         InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
@@ -389,36 +395,30 @@ class DiurnalState extends State<Diurnal> {
 
   void handleCandidateKey(
       {required BuildContext context,
-        required FlutterSecureStorage storage,
-        required String candidateKey}) {
+      required FlutterSecureStorage storage,
+      required String candidateKey}) {
     if (candidateKey == '') {
       print('    Private key not found, sending user to form route.');
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (context) =>
-                PrivateKeyFormRoute(storage: storage, refresh: _refresh)),
-      );
+      final route = MaterialPageRoute(
+          builder: (BuildContext context) =>
+              PrivateKeyFormRoute(storage: storage, refresh: _refresh));
+      Navigator.push(context, route);
       return;
     }
-    print('    Calling setState from candidate key handler...');
     setState(() {});
   }
 
-  Future<void> _showNotif() async {
-    print('_showNotif called.');
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails('your channel id', 'your channel name',
-            channelDescription: 'your channel description',
-            importance: Importance.max,
-            priority: Priority.high,
-            ticker: 'ticker');
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
+  Future<void> showNotification({required GSheets gsheets, required int seed}) async {
+    final now = DateTime.now();
+    List<Cell> block = await getCurrentBlock(gsheets: gsheets, now: now);
+    String body = 'All done for today :)';
+    if (block.isNotEmpty) {
+      body = block[TITLE].value;
+    }
     await _flutterLocalNotificationsPlugin!.show(
-        0, 'plain title', 'plain body', platformChannelSpecifics,
-        payload: 'item x');
-    print('sent notif.');
+        0, 'Diurnal', body, NOTIFICATION_DETAILS,
+        payload: 'PAYLOAD');
+    print('${seed}: Sent notification.');
     setState(() {});
   }
 
@@ -433,14 +433,14 @@ class DiurnalState extends State<Diurnal> {
     final int seed = rng.nextInt(1000);
 
     print('Rebuilding "Diurnal:${seed}"...');
-    var now = DateTime.now();
+    final now = DateTime.now();
     _numBuilds += 1;
-    print('${seed}:Num builds: $_numBuilds');
+    print('${seed}: Num builds: $_numBuilds');
 
     if (_gsheets == null) {
       if (!_gsheetsInitLock) {
         _gsheetsInitLock = true;
-        print('${seed}:Instantiating gsheets object...');
+        print('${seed}: Instantiating gsheets object...');
         getGSheets(storage: _storage).then((GSheets? gsheets) {
           _gsheetsInitLock = false;
           if (gsheets != null) {
@@ -450,31 +450,31 @@ class DiurnalState extends State<Diurnal> {
           }
         });
       } else {
-        print('${seed}:Gsheets object already being initialized.');
+        print('${seed}: Gsheets object already being initialized.');
       }
       return printConsoleText(text: 'Waiting for gsheets object...');
     }
 
     if (_getCurrentBlockLock) {
-      print('${seed}:Already fetching current block...');
+      print('${seed}: Already fetching current block...');
       return printConsoleText(text: 'Waiting for block...');
     }
     const oneMin = Duration(minutes: 1);
     final bool tooSoon = _lastBlockFetchTime.add(oneMin).isAfter(now);
     if (tooSoon && !_forceFetch) {
-      print('${seed}:Got cached block.');
+      print('${seed}: Got cached block.');
     } else {
       _getCurrentBlockLock = true;
-      print('${seed}:Fetching current block from Google...');
+      print('${seed}: Fetching current block from Google...');
       getCurrentBlock(
         gsheets: _gsheets!,
         now: now,
-      ).then((List<Cell>? block) {
+      ).then((List<Cell> block) {
         _getCurrentBlockLock = false;
         _lastBlockFetchTime = now;
-        if (block != null && _lastBlock != block) {
+        if (_lastBlock != block) {
           setState(() {
-            print('${seed}:Updating last block state.');
+            print('${seed}: Updating last block state.');
             _lastBlock = block;
           });
         }
@@ -517,8 +517,9 @@ class DiurnalState extends State<Diurnal> {
     final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
-    Widget timer = CountdownTimer(endTime: timerEndMilli, onEnd: _showNotif);
-    final staticTimer = Text('00:00:00');
+    void onEnd () => showNotification(gsheets: _gsheets!, seed: seed);
+    Widget timer = CountdownTimer(endTime: timerEndMilli, onEnd: onEnd);
+    const staticTimer = Text('00:00:00');
     if (timerEndMilli <= 0) {
       timer = staticTimer;
     }
@@ -543,8 +544,8 @@ class DiurnalState extends State<Diurnal> {
       return;
     }
 
-    final pass = Text('PASS', style: STYLE);
-    final fail = Text('FAIL', style: STYLE);
+    const pass = Text('PASS', style: STYLE);
+    const fail = Text('FAIL', style: STYLE);
     final Widget passButton = TextButton(
         onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 1.0),
         child: pass);
@@ -591,11 +592,11 @@ class PrivateKeyFormRoute extends StatefulWidget {
 
 class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
   final _formKey = GlobalKey<FormState>();
-  final controller = TextEditingController();
+  final _controller = TextEditingController();
 
   @override
   void dispose() {
-    controller.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -604,7 +605,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
     print('Building private key form route.');
 
     void submitKey() async {
-      final privateKey = controller.text;
+      final privateKey = _controller.text;
       if (_formKey.currentState!.validate()) {
         await widget.storage.write(key: KEY, value: privateKey);
         widget.refresh();
@@ -616,14 +617,14 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
 
     var textFormField = TextFormField(
       validator: validatePrivateKey,
-      controller: controller,
+      controller: _controller,
       maxLines: 20,
       decoration: formFieldDecoration,
     );
 
+    const submit = Text('Submit');
     var form = Form(key: _formKey, child: textFormField);
     var expForm = Expanded(child: form);
-    var submit = Text('Submit');
     var submitButton = TextButton(onPressed: submitKey, child: submit);
     var expSubmitButton = Expanded(child: submitButton);
     var formColumn = Column(children: <Widget>[expForm, expSubmitButton]);
