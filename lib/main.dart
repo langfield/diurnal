@@ -26,6 +26,7 @@ const int DAY_HEIGHT = 74;
 const int DAY_START_ROW = 2;
 const int POINTER_COLUMN = 50;
 const int POINTER_COLUMN_START_ROW = 1;
+
 const int TITLE = 0;
 const int DONE = 1;
 const int WEIGHT = 2;
@@ -33,8 +34,10 @@ const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
 const int TIME = 6;
+
 const double FONT_SIZE = 15.0;
 const Duration LEEWAY = Duration(minutes: 3);
+const Duration ONE_MINUTE = Duration(minutes: 1);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
 const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
@@ -50,7 +53,7 @@ const AndroidNotificationDetails ANDROID_DETAILS = AndroidNotificationDetails(
 const NotificationDetails NOTIFICATION_DETAILS =
     NotificationDetails(android: ANDROID_DETAILS);
 
-final formFieldDecoration = InputDecoration(
+final DECORATION = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
   focusedBorder: getOutlineInputBorder(color: Colors.white),
@@ -63,6 +66,11 @@ final formFieldDecoration = InputDecoration(
   floatingLabelBehavior: FloatingLabelBehavior.never,
 );
 
+const CrossAxisAlignment CROSS_START = CrossAxisAlignment.start;
+const CrossAxisAlignment CROSS_END = CrossAxisAlignment.start;
+const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
+const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // FUNCTIONS
@@ -70,13 +78,6 @@ final formFieldDecoration = InputDecoration(
 // Run the main app.
 void main() {
   runApp(const TopLevel());
-}
-
-OutlineInputBorder getOutlineInputBorder({required Color color}) {
-  return OutlineInputBorder(
-    borderRadius: RADIUS,
-    borderSide: BorderSide(color: color, width: 2.0),
-  );
 }
 
 ThemeData getTheme({required BuildContext context}) {
@@ -91,12 +92,6 @@ ThemeData getTheme({required BuildContext context}) {
           ));
 }
 
-Widget printConsoleText({required String text}) {
-  return Scaffold(
-    body: Text(text),
-  );
-}
-
 String getGSheets({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
   String credentials = secrets.credentials.replaceAll('@@@@@@', escaped);
@@ -109,7 +104,7 @@ bool isValidPrivateKey({required String? privateKey}) {
     return false;
   }
   try {
-    final _ = getGSheets(privateKey: privateKey);
+    final String _ = getGSheets(privateKey: privateKey);
     return true;
   } on ArgumentError catch (e) {
     print('Caught error: $e');
@@ -117,18 +112,20 @@ bool isValidPrivateKey({required String? privateKey}) {
   }
 }
 
-DateTime getDateFromBlockRow({required List<Cell> row, required DateTime now}) {
-  final String date = now.toString().split(' ')[0];
-  Cell daysCell = row[DAY_WIDTH - 1];
-  double days = double.parse(daysCell.value);
-  int hours = getHoursFromDays(days: days);
-  int mins = getMinutesFromDays(days: days);
-  String hoursString = hours.toString().padLeft(2, '0');
-  String minsString = mins.toString().padLeft(2, '0');
-  String blockTime = '$hoursString:$minsString';
-  String blockDateString = '$date $blockTime';
-  DateTime blockDateTime = DateTime.parse(blockDateString);
-  return blockDateTime;
+List<List<Cell>> filterRows({required List<List<Cell>> rows}) {
+  rows = rows.where((block) => !hasEmptyFields(block: block)).toList();
+  rows = rows.where((block) => !isDone(block: block)).toList();
+  return rows;
+}
+
+/// Return true if any cells are empty strings.
+bool hasEmptyFields({required List<Cell> block}) {
+  for (final Cell cell in block) {
+    if (cell.value == '') {
+      return true;
+    }
+  }
+  return false;
 }
 
 int getHoursFromDays({required double days}) {
@@ -142,32 +139,96 @@ int getMinutesFromDays({required double days}) {
   return (remainingHours * 60).round();
 }
 
-/// Return true if any cells are empty strings.
-bool hasEmptyFields({required List<Cell> row}) {
-  for (final Cell cell in row) {
-    if (cell.value == '') {
-      return true;
-    }
-  }
-  return false;
+DateTime getBlockStartTime({required List<Cell> block, required DateTime now}) {
+  final String date = now.toString().split(' ')[0];
+  Cell daysCell = block[DAY_WIDTH - 1];
+  double days = double.parse(daysCell.value);
+  int hours = getHoursFromDays(days: days);
+  int mins = getMinutesFromDays(days: days);
+  String hoursString = hours.toString().padLeft(2, '0');
+  String minsString = mins.toString().padLeft(2, '0');
+  String blockTime = '$hoursString:$minsString';
+  String blockDateString = '$date $blockTime';
+  DateTime blockDateTime = DateTime.parse(blockDateString);
+  return blockDateTime;
 }
 
-/// Get the end DateTime of the block, where ``row`` is assumed to be nonempty.
-DateTime getBlockEndTime({required List<Cell> row, required DateTime now}) {
-  final DateTime startTime = getDateFromBlockRow(row: row, now: now);
-  final Duration duration = Duration(minutes: int.parse(row[MINS].value));
+/// Get the end DateTime of the block, where ``block`` is assumed to be nonempty.
+DateTime getBlockEndTime({required List<Cell> block, required DateTime now}) {
+  final DateTime startTime = getBlockStartTime(block: block, now: now);
+  final Duration duration = Duration(minutes: int.parse(block[MINS].value));
   final DateTime endTime = startTime.add(duration);
   return endTime;
 }
 
-bool isDone({required List<Cell> row}) {
-  final String doneString = row[DONE].value;
+bool isDone({required List<Cell> block}) {
+  final String doneString = block[DONE].value;
   final double doneDecimal = double.parse(doneString);
   final int done = doneDecimal.floor();
   if (done == 1) {
     return true;
   }
   return false;
+}
+
+// Calculate new pointer based on current datetime.
+// We skip any block with end time prior to its deadline.
+int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
+  int newPtr = 1;
+  for (int i = 0; i < rows.length - 1; i++) {
+    final List<Cell> block = rows[i];
+    final List<Cell> nextBlock = rows[i];
+    final int rowIndex = block[0].row;
+    final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+    final DateTime nextBlockEndTime =
+        getBlockEndTime(block: nextBlock, now: now);
+    final DateTime blockEndTimeWithLeeway = blockEndTime.add(LEEWAY);
+    final List<DateTime> dates = [blockEndTimeWithLeeway, nextBlockEndTime];
+
+    // Take maximum of ``dates``.
+    final deadline = dates.reduce((a, b) => a.isAfter(b) ? a : b);
+    if (deadline.isBefore(now)) {
+      newPtr = rowIndex;
+    }
+  }
+  return newPtr;
+}
+
+Queue<List<Cell>> getStackFromRows(
+    {required List<List<Cell>> rows, required int ptr}) {
+  for (final int i = 0; i < rows.length - 1; i++) {
+    final int row = rows[i][TITLE].row;
+    if (row == ptr) return Queue().addAll(rows.sublist(i + 1, rows.length));
+  }
+  return Queue();
+}
+
+FlutterLocalNotificationsPlugin getNotificationsPlugin() {
+  // Initialise the plugin. Note ``app_icon`` needs to be a added as a
+  // drawable resource to the Android head project.
+  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('app_icon');
+  const IOSInitializationSettings initializationSettingsIOS =
+      IOSInitializationSettings();
+  const MacOSInitializationSettings initializationSettingsMacOS =
+      MacOSInitializationSettings();
+  const LinuxInitializationSettings initializationSettingsLinux =
+      LinuxInitializationSettings(defaultActionName: 'linux_notif');
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+    macOS: initializationSettingsMacOS,
+    linux: initializationSettingsLinux,
+  );
+  flutterLocalNotificationsPlugin.initialize(initializationSettings,
+      onSelectNotification: (String? payload) async {
+    if (payload != null) {
+      print('notification payload: $payload');
+    }
+  });
+  return flutterLocalNotificationsPlugin;
 }
 
 String? validatePrivateKey(String? candidate) {
@@ -178,119 +239,6 @@ String? validatePrivateKey(String? candidate) {
     return 'Bad private key';
   }
   return null;
-}
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-// AWAITABLES
-
-Future<String> getPrivateKey({required FlutterSecureStorage storage}) async {
-  String? privateKey = await storage.read(key: KEY);
-  if (privateKey == null) {
-    print('Couldn\'t find private key in storage.');
-    return '';
-  }
-  return privateKey;
-}
-
-Future<GSheets?> getGSheetsAsync({required FlutterSecureStorage storage}) async {
-  String? privateKey = await storage.read(key: KEY);
-  if (!isValidPrivateKey(privateKey: privateKey)) return null;
-  final gsheets = getGSheets(privateKey: privateKey);
-  return gsheets;
-}
-
-Future<Worksheet> getWorksheet({required GSheets gsheets}) async {
-  final ss = await gsheets.spreadsheet(secrets.ssid);
-  Worksheet? sheet = ss.worksheetByTitle('Sheet1');
-  if (sheet == null) throw Exception('Sheet1 not found :(');
-  return sheet;
-}
-
-Future<int> getPointer({required GSheets gsheets}) async {
-  Worksheet sheet = await getWorksheet(gsheets: gsheets);
-  final List<Cell>? column = await sheet.cells.column(POINTER_COLUMN,
-      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
-  final List<String>? columnValues = await sheet.values.column(POINTER_COLUMN,
-      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
-  final int index = columnValues!.indexOf(POINTER);
-  if (index == -1) return 0;
-  final Cell pointerCell = column![index];
-  return pointerCell.row;
-}
-
-Future<bool> setPointer(
-    {required GSheets gsheets, required int rowIndex}) async {
-  Worksheet sheet = await getWorksheet(gsheets: gsheets);
-  await sheet.clearColumn(POINTER_COLUMN,
-      fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
-  Cell newPointer =
-      await sheet.cells.cell(row: rowIndex, column: POINTER_COLUMN);
-  return await newPointer.post(POINTER);
-}
-
-/// Return empty list if there are no blocks with future end times.
-Future<List<Cell>> getCurrentBlock(
-    {required GSheets gsheets, required DateTime now}) async {
-  print('    Fetching worksheet...');
-  Worksheet sheet = await getWorksheet(gsheets: gsheets);
-
-  // Get rows for current day of the week.
-  print('    Fetching row matrix...');
-  final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
-  List<List<Cell>> rows = await sheet.cells.allRows(
-      fromRow: DAY_START_ROW,
-      fromColumn: startColumn,
-      length: DAY_WIDTH,
-      count: DAY_HEIGHT);
-
-  // Filter out blocks with empty cells and blocks that are done.
-  print('    Filtering rows...');
-  rows = rows.where((row) => !hasEmptyFields(row: row)).toList();
-  rows = rows.where((row) => !isDone(row: row)).toList();
-
-  print('    Getting pointer...');
-  final int pointerIndex = await getPointer(gsheets: gsheets);
-
-  // Calculate new pointer based on current datetime.
-  // We skip any block with end time prior to its deadline.
-  int newPointerIndex = 1;
-  for (int i = 0; i < rows.length - 1; i++) {
-    final List<Cell> row = rows[i];
-    final List<Cell> nextRow = rows[i];
-    final int rowIndex = row[0].row;
-    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
-    final DateTime nextBlockEndTime = getBlockEndTime(row: nextRow, now: now);
-    final DateTime blockEndTimeWithLeeway = blockEndTime.add(LEEWAY);
-    final List<DateTime> dates = [blockEndTimeWithLeeway, nextBlockEndTime];
-
-    // Take maximum of ``dates``.
-    final deadline = dates.reduce((a, b) => a.isAfter(b) ? a : b);
-    if (deadline.isBefore(now)) {
-      newPointerIndex = rowIndex;
-    }
-  }
-
-  // Increment pointer to new index.
-  print('    Incrementing row pointer: ${pointerIndex} -> ${newPointerIndex}');
-  if (pointerIndex < newPointerIndex) {
-    await setPointer(gsheets: gsheets, rowIndex: newPointerIndex);
-  }
-
-  // Iterate over blocks and return next block to display.
-  for (List<Cell> row in rows) {
-    final DateTime blockEndTime = getBlockEndTime(row: row, now: now);
-    final int rowIndex = row[0].row;
-    if (blockEndTime.isAfter(now) && pointerIndex < rowIndex) {
-      final List<Cell> currentBlock = [...row];
-      print('    Found current block!');
-      return currentBlock;
-    }
-  }
-
-  // Otherwise, return empty list.
-  print('    No more incomplete blocks, congratulations!');
-  return [];
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -343,223 +291,194 @@ class Diurnal extends StatefulWidget {
 }
 
 class DiurnalState extends State<Diurnal> {
-  GSheets? _gsheets;
-  List<Cell>? _lastBlock;
-  FlutterLocalNotificationsPlugin? _flutterLocalNotificationsPlugin;
+  // UNINITIALIZED STATE
 
-  int _numBuilds = 0;
-  bool _forceFetch = false;
-  bool _gsheetsInitLock = false;
-  bool _getCurrentBlockLock = false;
+  String? _key;
+
+  Queue<List<Cell>>? _stack;
+  Worksheet? _worksheet;
+
+  int? _currentBlockIndex;
+  Timer? _currentBlockTimer;
+  List<Cell>? _currentBlock;
+  FlutterLocalNotificationsPlugin? _notifications;
+
+  // INITIALIZED STATE
+
+  bool _invalidPrivateKey = false;
   final _storage = const FlutterSecureStorage();
-  DateTime _lastBlockFetchTime = DateTime.utc(1944, 6, 6);
 
   @override
   void initState() {
     super.initState();
-
-    print('initState:Getting private key from secure storage...');
-    getPrivateKey(storage: _storage).then((String candidateKey) {
-      handleCandidateKey(
-          context: context, storage: _storage, candidateKey: candidateKey);
-    });
-
-    // Initialise the plugin. Note ``app_icon`` needs to be a added as a
-    // drawable resource to the Android head project.
-    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        FlutterLocalNotificationsPlugin();
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('app_icon');
-    const IOSInitializationSettings initializationSettingsIOS =
-        IOSInitializationSettings();
-    const MacOSInitializationSettings initializationSettingsMacOS =
-        MacOSInitializationSettings();
-    const LinuxInitializationSettings initializationSettingsLinux =
-        LinuxInitializationSettings(defaultActionName: 'linux_notif');
-    const InitializationSettings initializationSettings =
-        InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-      macOS: initializationSettingsMacOS,
-      linux: initializationSettingsLinux,
-    );
-    flutterLocalNotificationsPlugin.initialize(initializationSettings,
-        onSelectNotification: (String? payload) async {
-      if (payload != null) {
-        print('notification payload: $payload');
-      }
-    });
-    _flutterLocalNotificationsPlugin = flutterLocalNotificationsPlugin;
-  }
-
-  void handleCandidateKey(
-      {required BuildContext context,
-      required FlutterSecureStorage storage,
-      required String candidateKey}) {
-    if (candidateKey == '') {
-      print('    Private key not found, sending user to form route.');
-      final route = MaterialPageRoute(
-          builder: (BuildContext context) =>
-              PrivateKeyFormRoute(storage: storage, refresh: _refresh));
-      Navigator.push(context, route);
-      return;
-    }
-    setState(() {});
-  }
-
-  Future<void> showNotification({required GSheets gsheets}) async {
-    String body = 'All done for today :)';
-    if (block.isNotEmpty) {
-      body = block[TITLE].value;
-    }
-    await _flutterLocalNotificationsPlugin!.show(
-        0, 'Diurnal', body, NOTIFICATION_DETAILS,
-        payload: 'PAYLOAD');
-    setState(() {});
+    readPrivateKey();
+    _notifications = getNotificationsPlugin();
+    Timer.periodic(ONE_MINUTE, (Timer t) => updateWorksheet());
   }
 
   void _refresh() {
     setState(() {});
   }
 
+  // AWAITABLE METHODS
+
+  Future<void> initWorksheet({required String key}) async {
+    if (!isValidPrivateKey(privateKey: privateKey)) {
+      _invalidPrivateKey = true;
+      return null;
+    }
+    final gsheets = getGSheets(privateKey: privateKey);
+    final ss = await gsheets.spreadsheet(secrets.ssid);
+    _worksheet = ss.worksheetByTitle('Sheet1');
+  }
+
+  Future<void> updateWorksheet() async {
+    if (_key == null) return;
+    if (_worksheet == null) return;
+    final now = DateTime.now();
+
+    // HTTP GET REQUEST.
+    _stack = await getStack(now: now);
+
+    // This is not always at the top of stack.
+    _currentBlockIndex = getCurrentBlockIndex(now: now);
+    resetBlockTimer();
+  }
+
+  Future<void> readPrivateKey() async {
+    final String? key = await _storage.read(key: KEY);
+    if (key == null) await pushFormRoute();
+    _key = await _storage.read(key: KEY);
+    await initWorksheet(key: _key!);
+    await updateWorksheet();
+    setState(() {});
+  }
+
+  Future<void> onTimerEnd() async {
+    if (_currentBlock == null) return;
+    if (_currentBlockIndex == null) return;
+    showNotification(block: _currentBlock);
+    _currentBlockIndex += 1;
+    resetBlockTimer();
+  }
+
+  Future<void> showNotification({required List<Cell> block}) async {
+    String body = 'All done for today :)';
+    if (block.isNotEmpty) body = block[TITLE].value;
+    await _notifications!.show(0, 'Diurnal', body, DETAILS, payload: 'LOAD');
+  }
+
+  Future<void> passOrFail({required double doneProportion}) async {
+    if (_stack == null) return;
+    if (_stack.length >= 1) _stack.pop();
+    setState(() {});
+  }
+
+  // TODO: Is it still necessary to refresh from ``PrivateKeyFormRoute``?
+  Future<void> pushFormRoute() async {
+    final route = MaterialPageRoute(
+        builder: (BuildContext context) =>
+            PrivateKeyFormRoute(storage: _storage, refresh: _refresh));
+    await Navigator.push(context, route);
+  }
+
+  Future<Queue<List<Cell>>> getStack({required DateTime now}) async {
+    // HTTP GET REQUEST.
+    List<List<Cell>> rows = await getRows(now: now);
+    rows = filterRows(rows: rows);
+    // HTTP GET REQUEST.
+    final int oldPtr = await getPointer();
+    final int newPtr = computeNewPointer(rows: rows, now: now);
+    if (oldPtr < newPtr) await setPointer(ptr: newPtr);
+    Queue<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
+    return stack;
+  }
+
+  Future<List<List<Cell>>> getRows({required DateTime now}) async {
+    final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
+    // HTTP GET REQUEST.
+    List<List<Cell>> rows = await _worksheet.cells.allRows(
+        fromRow: DAY_START_ROW,
+        fromColumn: startColumn,
+        length: DAY_WIDTH,
+        count: DAY_HEIGHT);
+    return rows;
+  }
+
+  Future<int> getPointer() async {
+    // HTTP GET REQUEST.
+    final List<Cell>? column = await _worksheet.cells.column(POINTER_COLUMN,
+        fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
+    for (final Cell cell in column!) {
+      if (cell.value == '*') {
+        return cell.row;
+      }
+    }
+    return POINTER_COLUMN_START_ROW;
+  }
+
+  Future<void> setPointer({required int ptr}) async {
+    // HTTP GET REQUEST.
+    await _worksheet.clearColumn(POINTER_COLUMN,
+        fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
+    // HTTP GET REQUEST.
+    Cell newPointer = await sheet.cells.cell(row: ptr, column: POINTER_COLUMN);
+    // HTTP GET REQUEST.
+    await newPointer.post(POINTER);
+  }
+
+  // METHODS
+
+  void resetBlockTimer() {
+    if (_stack == null) return;
+    if (_currentBlockIndex == null) return;
+    if (_currentBlockIndex >= _stack.length) return;
+    _currentBlock = _stack[_currentBlockIndex];
+    if (_currentBlockTimer != null) _currentBlockTimer.dispose();
+    final duration = Duration(_currentBlock[MINS]);
+    _currentBlockTimer = Timer(duration: duration, onEnd: onTimerEnd);
+  }
+
+  int? getCurrentBlockIndex({required DateTime now}) {
+    for (final int i = 0; i < _stack.length; i++) {
+      final Cell block = _stack[i];
+      DateTime blockStartTime = getBlockStartTime(block: block, now: now);
+      DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+      if (now.isAtSameMomentAs(blockStartTime) || now.isAfter(blockStartTime)) {
+        if (now.isBefore(blockEndTime)) return i;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Get a seed for this build for debugging.
-    final rng = Random();
-    final int seed = rng.nextInt(1000);
+    if (_stack == null) return consoleMessage('Fetching data...');
+    if (_worksheet == null) return consoleMessage('Null worksheet :(');
+    if (_stack.length == 0) return consoleMessage('All done :)');
+    final List<Cell> dueBlock = _stack[0];
+    Widget timer = Text('00:00');
+    if (_currentBlockIndex == 0 && _currentBlockTimer != null)
+      timer = _currentBlockTimer;
+    return timer;
+  }
 
-    print('Rebuilding "Diurnal:${seed}"...');
-    final now = DateTime.now();
-    _numBuilds += 1;
-    print('${seed}: Num builds: $_numBuilds');
-
-    if (_gsheets == null) {
-      if (!_gsheetsInitLock) {
-        _gsheetsInitLock = true;
-        print('${seed}: Instantiating gsheets object...');
-        getGSheetsAsync(storage: _storage).then((GSheets? gsheets) {
-          _gsheetsInitLock = false;
-          if (gsheets != null) {
-            setState(() {
-              _gsheets = gsheets;
-            });
-          }
-        });
-      } else {
-        print('${seed}: Gsheets object already being initialized.');
-      }
-      return printConsoleText(text: 'Waiting for gsheets object...');
-    }
-
-    if (_getCurrentBlockLock) {
-      print('${seed}: Already fetching current block...');
-      return printConsoleText(text: 'Waiting for block...');
-    }
-    const oneMin = Duration(minutes: 1);
-    final bool tooSoon = _lastBlockFetchTime.add(oneMin).isAfter(now);
-    if (tooSoon && !_forceFetch) {
-      print('${seed}: Got cached block.');
-    } else {
-      _getCurrentBlockLock = true;
-      print('${seed}: Fetching current block from Google...');
-      getCurrentBlock(
-        gsheets: _gsheets!,
-        now: now,
-      ).then((List<Cell> block) {
-        _getCurrentBlockLock = false;
-        _lastBlockFetchTime = now;
-        if (_lastBlock != block) {
-          setState(() {
-            print('${seed}: Updating last block state.');
-            _lastBlock = block;
-          });
-        }
-      });
-      _forceFetch = false;
-    }
-    if (_lastBlock == null) {
-      return printConsoleText(text: 'Waiting for block...');
-    }
-
-    final List<Cell> block = _lastBlock!;
-    if (block.isEmpty) {
-      return printConsoleText(text: 'All done for today :)');
-    }
-
-    const CrossAxisAlignment CROSS_START = CrossAxisAlignment.start;
-    const CrossAxisAlignment CROSS_END = CrossAxisAlignment.start;
-    const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
-    const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
-
-    DateTime getTimerEnd({required DateTime end, required DateTime now}) {
-      if (end.isBefore(now)) {
-        return now;
-      }
-      return end;
-    }
-
-    final DateFormat formatter = DateFormat.Hm();
-    final DateTime blockStartTime = getDateFromBlockRow(row: block, now: now);
-    final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
-    final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
-    final int msEndTime = timerEnd.millisecondsSinceEpoch;
-    final String blockStartStr = formatter.format(blockStartTime);
-    final String blockEndStr = formatter.format(blockEndTime);
-    final String blockDuration = '${int.parse(block[MINS].value)}min';
-    final String blockWeight = '${int.parse(block[WEIGHT].value)}N';
-    final Widget blockTitle = Text(block[TITLE].value);
-    final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
-    final Widget builds = Text('Number of builds: $_numBuilds');
-    final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
-    final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
-    Duration timeLeft = timerEnd.difference(now);
-
-    print('${seed}: TIMER SECONDS LEFT: ${timeLeft.inSeconds}');
-    Widget timer = Text('00:00:00');
-    if (timeLeft.inSeconds > 0) {
-      final now = DateTime.now();
-      List<Cell> block = getCurrentBlock(gsheets: gsheets, now: now);
-      void onEnd () => showNotification(gsheets: _gsheets!);
-      timer = CountdownTimer(endTime: msEndTime, onEnd: onEnd);
-    }
-
-    final Widget leftBlockColumn =
-        Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
-    final Widget rightBlockColumn =
-        Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
-    final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
-
-    Cell doneCell = block[DONE];
-
-    void doneHandler({required Cell doneCell, required double doneProportion}) {
-      var doneFuture = doneCell.post(doneProportion);
-      var pointerFuture =
-          setPointer(gsheets: _gsheets!, rowIndex: doneCell.row);
-      List<Future<bool>> futures = [doneFuture, pointerFuture];
-      Future.wait(futures).then((_) {
-        setState(() {
-          _forceFetch = true;
-        });
-      });
-      return;
-    }
+  Widget getBlockWidget({required List<Cell> block, required Widget timer}) {
 
     const pass = Text('PASS', style: STYLE);
     const fail = Text('FAIL', style: STYLE);
     final Widget passButton = TextButton(
-        onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 1.0),
+        onPressed: () => passOrFail(doneCell: doneCell, doneProportion: 1.0),
         child: pass);
     final Widget failButton = TextButton(
-        onPressed: () => doneHandler(doneCell: doneCell, doneProportion: 0.0),
+        onPressed: () => passOrFail(doneCell: doneCell, doneProportion: 0.0),
         child: fail);
     final List<Widget> buttons = [passButton, failButton];
 
-    final Widget clearKeyButton = TextButton(
-        onPressed: () {
-          _storage.delete(key: KEY);
-          print('Deleted private key!');
-        },
-        child: const Text('CLEAR KEY', style: STYLE));
+    // Button to delete private key from disk.
+    void delete = () => _storage.delete(key: KEY);
+    const Text clearKey = Text('CLEAR KEY', style: STYLE);
+    final Widget clearButton = TextButton(onPressed: delete, child: clearKey);
 
     // Main column containing centered rows (block, buttons, timer).
     return Column(
@@ -571,7 +490,7 @@ class DiurnalState extends State<Diurnal> {
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
         Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
-        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[clearKeyButton]),
+        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[clearButton]),
       ],
     );
   }
@@ -619,7 +538,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
       validator: validatePrivateKey,
       controller: _controller,
       maxLines: 20,
-      decoration: formFieldDecoration,
+      decoration: DECORATION,
     );
 
     const submit = Text('Submit');
