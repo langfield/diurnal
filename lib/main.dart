@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 
 import 'package:intl/intl.dart';
 import 'package:gsheets/gsheets.dart';
+import 'package:flutter_countdown_timer/index.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter_countdown_timer/flutter_countdown_timer.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:diurnal/SECRETS.dart' as secrets;
@@ -205,6 +205,7 @@ int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
 
 Queue<List<Cell>> getStackFromRows(
     {required List<List<Cell>> rows, required int ptr}) {
+  print('Getting stack from rows...');
   final Queue<List<Cell>> stack = Queue();
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
@@ -213,6 +214,7 @@ Queue<List<Cell>> getStackFromRows(
       return stack;
     }
   }
+  print('Returning empty stack.');
   return stack;
 }
 
@@ -348,6 +350,7 @@ class DiurnalState extends State<Diurnal> {
   // AWAITABLE METHODS
 
   Future<void> initWorksheet({required String privateKey}) async {
+    print('Initializing worksheet...');
     if (!isValidPrivateKey(privateKey: privateKey)) {
       print('Got invalid private key :(');
       return;
@@ -358,6 +361,7 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<void> updateWorksheet() async {
+    print('Updating worksheet...');
     if (_key == null) return;
     if (_worksheet == null) return;
     final now = DateTime.now();
@@ -371,6 +375,7 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<void> readPrivateKey() async {
+    print('Reading private key...');
     final String? key = await _storage.read(key: KEY);
     if (key == null) await pushFormRoute();
     _key = await _storage.read(key: KEY);
@@ -411,6 +416,7 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<Queue<List<Cell>>> getStack({required DateTime now}) async {
+    print('Getting stack...');
     // HTTP GET REQUEST.
     List<List<Cell>> rows = await getRows(now: now);
     rows = filterRows(rows: rows);
@@ -463,14 +469,19 @@ class DiurnalState extends State<Diurnal> {
     if (_currentBlockIndex == null) return;
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
-    if (_currentBlockTimer != null) _currentBlockTimer!.controller!.dispose();
+    // BUG: Null check operator used on null value.
+    if (_currentBlockTimer != null) {
+      var controller = _currentBlockTimer!.controller;
+      if (controller != null) controller.dispose();
+    }
 
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
-    _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
+    final con = CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
+    _currentBlockTimer = CountdownTimer(controller: con);
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
