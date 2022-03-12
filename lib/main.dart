@@ -396,6 +396,7 @@ class DiurnalState extends State<Diurnal> {
         'Incrementing _currentBlockIndex: ${_currentBlockIndex} -> ${_currentBlockIndex! + 1}');
     _currentBlockIndex = _currentBlockIndex! + 1;
     resetBlockTimer();
+    setState(() {});
   }
 
   Future<void> showNotification({required List<Cell> block}) async {
@@ -506,6 +507,7 @@ class DiurnalState extends State<Diurnal> {
     print('Getting current block index...');
     print('Stack is null: ${_stack == null}');
     print('Stack size: ${_stack!.length}');
+    print('Now: ${now}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockStartTime = getBlockStartTime(block: block, now: now);
