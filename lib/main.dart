@@ -88,7 +88,6 @@ OutlineInputBorder getOutlineInputBorder({required Color color}) {
   );
 }
 
-
 ThemeData getTheme({required BuildContext context}) {
   return ThemeData(
       scaffoldBackgroundColor: Colors.black,
@@ -262,7 +261,6 @@ DateTime getTimerEnd({required DateTime end, required DateTime now}) {
   return end;
 }
 
-
 Widget consoleMessage({required String text}) {
   return Scaffold(
     body: Text(text),
@@ -391,7 +389,8 @@ class DiurnalState extends State<Diurnal> {
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
     showNotification(block: _currentBlock!);
-    print('Incrementing _currentBlockIndex: ${_currentBlockIndex} -> ${_currentBlockIndex! + 1}');
+    print(
+        'Incrementing _currentBlockIndex: ${_currentBlockIndex} -> ${_currentBlockIndex! + 1}');
     _currentBlockIndex = _currentBlockIndex! + 1;
     resetBlockTimer();
   }
@@ -466,7 +465,8 @@ class DiurnalState extends State<Diurnal> {
     await _worksheet!.clearColumn(POINTER_COLUMN,
         fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
     // HTTP GET REQUEST.
-    Cell newPointer = await _worksheet!.cells.cell(row: ptr, column: POINTER_COLUMN);
+    Cell newPointer =
+        await _worksheet!.cells.cell(row: ptr, column: POINTER_COLUMN);
     // HTTP GET REQUEST.
     await newPointer.post(POINTER);
   }
@@ -475,11 +475,18 @@ class DiurnalState extends State<Diurnal> {
 
   // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
+    print('Stack is null: ${_stack == null}');
     if (_stack == null) return;
+    print('Current block index is null: ${_currentBlockIndex == null}');
     if (_currentBlockIndex == null) return;
+    print('Current block index: ${_currentBlockIndex}');
+    print('Stack length: ${_stack!.length}');
+    print(
+        'Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
 
+    print('Setting new timer...');
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
@@ -487,6 +494,8 @@ class DiurnalState extends State<Diurnal> {
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
     final con = CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
     _currentBlockTimer = CountdownTimer(controller: con);
+    print('Set timer for block: ${block[TITLE].value}');
+    print('Timer set to: ${timerEnd.toLocal()}');
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
@@ -517,21 +526,24 @@ class DiurnalState extends State<Diurnal> {
     if (_worksheet == null) return consoleMessage(text: 'Null worksheet :(');
     if (_stack!.isEmpty) return consoleMessage(text: 'All done :)');
 
-    Widget timer = const Text('00:00');
-    if (_currentBlockIndex == 0 && _currentBlockTimer != null) {
-      timer = _currentBlockTimer!;
+    Widget dueTimer = const Text('00:00');
+    Widget currentTimer = const Text('00:00');
+
+    if (_currentBlockTimer != null) {
+      currentTimer = _currentBlockTimer!;
+      if (_currentBlockIndex == 0) {
+        dueTimer = _currentBlockTimer!;
+      } else {
+        print('_currentBlockIndex: ${_currentBlockIndex}');
+        print('_currentBlockTimer: ${_currentBlockTimer}');
+        print('Using zeroed-out timer :(');
+      }
     } else {
-      print('_currentBlockIndex: ${_currentBlockIndex}');
-      print('_currentBlockTimer: ${_currentBlockTimer}');
-      print('Using zeroed-out timer :(');
+      print('WARNING: _currentBlockTimer is null!');
     }
 
-    final List<Cell> dueBlock = _stack!.first;
+    final List<Cell> block = _stack!.first;
 
-    return getBlockWidget(block: dueBlock, timer: timer);
-  }
-
-  Widget getBlockWidget({required List<Cell> block, required Widget timer}) {
     final now = DateTime.now();
     final DateFormat formatter = DateFormat.Hm();
     final DateTime blockStartTime = getBlockStartTime(block: block, now: now);
@@ -577,7 +589,8 @@ class DiurnalState extends State<Diurnal> {
             crossAxisAlignment: CROSS_START,
             children: blockColumns),
         Row(mainAxisAlignment: MAIN_CENTER, children: buttons),
-        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[timer]),
+        Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[dueTimer]),
+        Visibility(child: currentTimer, visible: false, maintainState: true),
         Row(mainAxisAlignment: MAIN_CENTER, children: <Widget>[clearButton]),
       ],
     );
