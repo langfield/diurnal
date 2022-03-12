@@ -493,9 +493,7 @@ class DiurnalState extends State<Diurnal> {
     const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
 
     DateTime getTimerEnd({required DateTime end, required DateTime now}) {
-      if (end.isBefore(now)) {
-        return now;
-      }
+      if (end.isBefore(now)) return now;
       return end;
     }
 

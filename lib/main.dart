@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/material.dart';
 
@@ -50,10 +51,10 @@ const AndroidNotificationDetails ANDROID_DETAILS = AndroidNotificationDetails(
     importance: Importance.max,
     priority: Priority.high,
     ticker: 'ticker');
-const NotificationDetails NOTIFICATION_DETAILS =
+const NotificationDetails DETAILS =
     NotificationDetails(android: ANDROID_DETAILS);
 
-final DECORATION = InputDecoration(
+final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
   focusedBorder: getOutlineInputBorder(color: Colors.white),
@@ -80,6 +81,14 @@ void main() {
   runApp(const TopLevel());
 }
 
+OutlineInputBorder getOutlineInputBorder({required Color color}) {
+  return OutlineInputBorder(
+    borderRadius: RADIUS,
+    borderSide: BorderSide(color: color, width: 2.0),
+  );
+}
+
+
 ThemeData getTheme({required BuildContext context}) {
   return ThemeData(
       scaffoldBackgroundColor: Colors.black,
@@ -92,7 +101,7 @@ ThemeData getTheme({required BuildContext context}) {
           ));
 }
 
-String getGSheets({required String privateKey}) {
+GSheets getGSheets({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
   String credentials = secrets.credentials.replaceAll('@@@@@@', escaped);
   return GSheets(credentials);
@@ -104,7 +113,7 @@ bool isValidPrivateKey({required String? privateKey}) {
     return false;
   }
   try {
-    final String _ = getGSheets(privateKey: privateKey);
+    final GSheets _ = getGSheets(privateKey: privateKey);
     return true;
   } on ArgumentError catch (e) {
     print('Caught error: $e');
@@ -196,11 +205,15 @@ int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
 
 Queue<List<Cell>> getStackFromRows(
     {required List<List<Cell>> rows, required int ptr}) {
-  for (final int i = 0; i < rows.length - 1; i++) {
+  final Queue<List<Cell>> stack = Queue();
+  for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
-    if (row == ptr) return Queue().addAll(rows.sublist(i + 1, rows.length));
+    if (row == ptr) {
+      stack.addAll(rows.sublist(i + 1, rows.length));
+      return stack;
+    }
   }
-  return Queue();
+  return stack;
 }
 
 FlutterLocalNotificationsPlugin getNotificationsPlugin() {
@@ -239,6 +252,18 @@ String? validatePrivateKey(String? candidate) {
     return 'Bad private key';
   }
   return null;
+}
+
+DateTime getTimerEnd({required DateTime end, required DateTime now}) {
+  if (end.isBefore(now)) return now;
+  return end;
+}
+
+
+Widget consoleMessage({required String text}) {
+  return Scaffold(
+    body: Text(text),
+  );
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -299,13 +324,13 @@ class DiurnalState extends State<Diurnal> {
   Worksheet? _worksheet;
 
   int? _currentBlockIndex;
-  Timer? _currentBlockTimer;
+  CountdownTimer? _currentBlockTimer;
   List<Cell>? _currentBlock;
   FlutterLocalNotificationsPlugin? _notifications;
 
   // INITIALIZED STATE
 
-  bool _invalidPrivateKey = false;
+  int _numBuilds = 0;
   final _storage = const FlutterSecureStorage();
 
   @override
@@ -322,12 +347,12 @@ class DiurnalState extends State<Diurnal> {
 
   // AWAITABLE METHODS
 
-  Future<void> initWorksheet({required String key}) async {
+  Future<void> initWorksheet({required String privateKey}) async {
     if (!isValidPrivateKey(privateKey: privateKey)) {
-      _invalidPrivateKey = true;
-      return null;
+      print('Got invalid private key :(');
+      return;
     }
-    final gsheets = getGSheets(privateKey: privateKey);
+    final GSheets gsheets = getGSheets(privateKey: privateKey);
     final ss = await gsheets.spreadsheet(secrets.ssid);
     _worksheet = ss.worksheetByTitle('Sheet1');
   }
@@ -349,7 +374,7 @@ class DiurnalState extends State<Diurnal> {
     final String? key = await _storage.read(key: KEY);
     if (key == null) await pushFormRoute();
     _key = await _storage.read(key: KEY);
-    await initWorksheet(key: _key!);
+    await initWorksheet(privateKey: _key!);
     await updateWorksheet();
     setState(() {});
   }
@@ -357,8 +382,8 @@ class DiurnalState extends State<Diurnal> {
   Future<void> onTimerEnd() async {
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
-    showNotification(block: _currentBlock);
-    _currentBlockIndex += 1;
+    showNotification(block: _currentBlock!);
+    _currentBlockIndex = _currentBlockIndex! + 1;
     resetBlockTimer();
   }
 
@@ -368,10 +393,13 @@ class DiurnalState extends State<Diurnal> {
     await _notifications!.show(0, 'Diurnal', body, DETAILS, payload: 'LOAD');
   }
 
-  Future<void> passOrFail({required double doneProportion}) async {
+  Future<void> passOrFail({required double score}) async {
     if (_stack == null) return;
-    if (_stack.length >= 1) _stack.pop();
+    if (_stack!.isEmpty) return;
+    final List<Cell> concludedBlock = _stack!.removeFirst();
     setState(() {});
+    final Cell doneCell = concludedBlock[DONE];
+    doneCell.post(score);
   }
 
   // TODO: Is it still necessary to refresh from ``PrivateKeyFormRoute``?
@@ -397,7 +425,7 @@ class DiurnalState extends State<Diurnal> {
   Future<List<List<Cell>>> getRows({required DateTime now}) async {
     final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
     // HTTP GET REQUEST.
-    List<List<Cell>> rows = await _worksheet.cells.allRows(
+    List<List<Cell>> rows = await _worksheet!.cells.allRows(
         fromRow: DAY_START_ROW,
         fromColumn: startColumn,
         length: DAY_WIDTH,
@@ -407,7 +435,7 @@ class DiurnalState extends State<Diurnal> {
 
   Future<int> getPointer() async {
     // HTTP GET REQUEST.
-    final List<Cell>? column = await _worksheet.cells.column(POINTER_COLUMN,
+    final List<Cell>? column = await _worksheet!.cells.column(POINTER_COLUMN,
         fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
     for (final Cell cell in column!) {
       if (cell.value == '*') {
@@ -419,29 +447,35 @@ class DiurnalState extends State<Diurnal> {
 
   Future<void> setPointer({required int ptr}) async {
     // HTTP GET REQUEST.
-    await _worksheet.clearColumn(POINTER_COLUMN,
+    await _worksheet!.clearColumn(POINTER_COLUMN,
         fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
     // HTTP GET REQUEST.
-    Cell newPointer = await sheet.cells.cell(row: ptr, column: POINTER_COLUMN);
+    Cell newPointer = await _worksheet!.cells.cell(row: ptr, column: POINTER_COLUMN);
     // HTTP GET REQUEST.
     await newPointer.post(POINTER);
   }
 
   // METHODS
 
+  // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
     if (_stack == null) return;
     if (_currentBlockIndex == null) return;
-    if (_currentBlockIndex >= _stack.length) return;
-    _currentBlock = _stack[_currentBlockIndex];
-    if (_currentBlockTimer != null) _currentBlockTimer.dispose();
-    final duration = Duration(_currentBlock[MINS]);
-    _currentBlockTimer = Timer(duration: duration, onEnd: onTimerEnd);
+    if (_currentBlockIndex! >= _stack!.length) return;
+    _currentBlock = _stack!.elementAt(_currentBlockIndex!);
+    if (_currentBlockTimer != null) _currentBlockTimer!.controller!.dispose();
+
+    final now = DateTime.now();
+    final List<Cell> block = _currentBlock!;
+    final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+    final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
+    final int msEndTime = timerEnd.millisecondsSinceEpoch;
+    _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
-    for (final int i = 0; i < _stack.length; i++) {
-      final Cell block = _stack[i];
+    for (int i = 0; i < _stack!.length; i++) {
+      final List<Cell> block = _stack!.elementAt(i);
       DateTime blockStartTime = getBlockStartTime(block: block, now: now);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       if (now.isAtSameMomentAs(blockStartTime) || now.isAfter(blockStartTime)) {
@@ -453,30 +487,59 @@ class DiurnalState extends State<Diurnal> {
 
   @override
   Widget build(BuildContext context) {
-    if (_stack == null) return consoleMessage('Fetching data...');
-    if (_worksheet == null) return consoleMessage('Null worksheet :(');
-    if (_stack.length == 0) return consoleMessage('All done :)');
-    final List<Cell> dueBlock = _stack[0];
-    Widget timer = Text('00:00');
-    if (_currentBlockIndex == 0 && _currentBlockTimer != null)
-      timer = _currentBlockTimer;
-    return timer;
+    _numBuilds += 1;
+    final rng = Random();
+    final int seed = rng.nextInt(1000);
+    print('${seed}: Num builds: $_numBuilds');
+
+    if (_stack == null) return consoleMessage(text: 'Fetching data...');
+    if (_worksheet == null) return consoleMessage(text: 'Null worksheet :(');
+    if (_stack!.isEmpty) return consoleMessage(text: 'All done :)');
+
+    Widget timer = const Text('00:00');
+    if (_currentBlockIndex == 0 && _currentBlockTimer != null) {
+      timer = _currentBlockTimer!;
+    }
+
+    final List<Cell> dueBlock = _stack!.first;
+
+    return getBlockWidget(block: dueBlock, timer: timer);
   }
 
   Widget getBlockWidget({required List<Cell> block, required Widget timer}) {
+    final now = DateTime.now();
+    final DateFormat formatter = DateFormat.Hm();
+    final DateTime blockStartTime = getBlockStartTime(block: block, now: now);
+    final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
 
-    const pass = Text('PASS', style: STYLE);
-    const fail = Text('FAIL', style: STYLE);
-    final Widget passButton = TextButton(
-        onPressed: () => passOrFail(doneCell: doneCell, doneProportion: 1.0),
-        child: pass);
-    final Widget failButton = TextButton(
-        onPressed: () => passOrFail(doneCell: doneCell, doneProportion: 0.0),
-        child: fail);
+    final String blockStartStr = formatter.format(blockStartTime);
+    final String blockEndStr = formatter.format(blockEndTime);
+    final String blockDuration = '${int.parse(block[MINS].value)}min';
+    final String blockWeight = '${int.parse(block[WEIGHT].value)}N';
+
+    final Widget blockTitle = Text(block[TITLE].value);
+    final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
+    final Widget builds = Text('Number of builds: ${_numBuilds}');
+    final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr} UTC+0');
+
+    final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
+
+    final Widget leftBlockColumn =
+        Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
+    final Widget rightBlockColumn =
+        Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
+    final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
+
+    const passText = Text('PASS', style: STYLE);
+    const failText = Text('FAIL', style: STYLE);
+    void pass() => passOrFail(score: 1.0);
+    void fail() => passOrFail(score: 0.0);
+    final Widget passButton = TextButton(onPressed: pass, child: passText);
+    final Widget failButton = TextButton(onPressed: fail, child: failText);
     final List<Widget> buttons = [passButton, failButton];
 
     // Button to delete private key from disk.
-    void delete = () => _storage.delete(key: KEY);
+    void delete() => _storage.delete(key: KEY);
     const Text clearKey = Text('CLEAR KEY', style: STYLE);
     final Widget clearButton = TextButton(onPressed: delete, child: clearKey);
 
@@ -538,7 +601,7 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
       validator: validatePrivateKey,
       controller: _controller,
       maxLines: 20,
-      decoration: DECORATION,
+      decoration: formFieldDecoration,
     );
 
     const submit = Text('Submit');
