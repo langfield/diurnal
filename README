@@ -72,8 +72,12 @@ manually change the program's current block, simply move the pointer.
 In initState():
 - Call awaitable to check for private key and redirect to form if needed (can
   use context in initState as done in current version).
-- Call awaitable to get and store worksheet as state, then refresh.
 - Instantiate periodic timer to fetch from sheet once-per-minute.
+
+In initWorksheet() async:
+- ONLY CALLED ONCE EVER!
+- Get worksheet and store as state.
+- Refresh.
 
 In updateWorksheet() async:
 - If private key or worksheet object are null, do nothing.
@@ -83,16 +87,24 @@ In updateWorksheet() async:
 
 In build():
 - If stack is null, display ``Fetching data...``.
-- Otherwise, read block from top of stack...
+- Otherwise, read ``dueBlock`` from top of stack...
 - Instantiate/update countdown timer...
 - Display block (yellow if late).
 
 In onTimerEnd() async:
-- Show notification for the associated block.
+- Show notification for the old currentBlock.
+- Set timer for new currentBlock.
 - Refresh.
 
 In passOrFail() async:
 - Pop block from top of stack.
+- Refresh.
+
+In readPrivateKey() async:
+- Await read private key.
+- If it doesn't exist, redirect to form.
+- Call awaitable to get and store worksheet as state.
+- Call ``updateWorksheet()``.
 - Refresh.
 
 
@@ -105,5 +117,11 @@ In above architecture, we are displaying the ``dueBlock`` at all times, since
 we only pop from the stack in ``passOrFail()``. This is good. If you want to
 know the currentBlock, it is very easy to simply open Google sheets. So we will
 not support showing the ``currentBlock`` when a block is overdue.
+
+This means the timer stops going off on each block when we don't pass or fail
+the block. That is bad, so we want to continue making new timers, but we do not
+display them.
+
+When a timer goes off, it must be the timer for the currentBlock.
 
 Maybe we can send the notification a little early to compensate.
