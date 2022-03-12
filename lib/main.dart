@@ -206,6 +206,7 @@ int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
 Queue<List<Cell>> getStackFromRows(
     {required List<List<Cell>> rows, required int ptr}) {
   print('Getting stack from rows...');
+  print('Rows size: ${rows.length}');
   final Queue<List<Cell>> stack = Queue();
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
@@ -479,12 +480,6 @@ class DiurnalState extends State<Diurnal> {
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
 
-    // BUG: Null check operator used on null value.
-    if (_currentBlockTimer != null) {
-      var controller = _currentBlockTimer!.controller;
-      // if (controller != null) controller.dispose();
-    }
-
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
@@ -496,6 +491,8 @@ class DiurnalState extends State<Diurnal> {
 
   int? getCurrentBlockIndex({required DateTime now}) {
     print('Getting current block index...');
+    print('Stack is null: ${_stack == null}');
+    print('Stack size: ${_stack!.length}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockStartTime = getBlockStartTime(block: block, now: now);
