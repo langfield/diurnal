@@ -371,6 +371,7 @@ class DiurnalState extends State<Diurnal> {
 
     // This is not always at the top of stack.
     _currentBlockIndex = getCurrentBlockIndex(now: now);
+    print('Set current block index: ${_currentBlockIndex}');
     resetBlockTimer();
   }
 
@@ -385,9 +386,11 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<void> onTimerEnd() async {
+    print('Timer has ended, displaying notification...');
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
     showNotification(block: _currentBlock!);
+    print('Incrementing _currentBlockIndex: ${_currentBlockIndex} -> ${_currentBlockIndex! + 1}');
     _currentBlockIndex = _currentBlockIndex! + 1;
     resetBlockTimer();
   }
@@ -402,6 +405,12 @@ class DiurnalState extends State<Diurnal> {
     if (_stack == null) return;
     if (_stack!.isEmpty) return;
     final List<Cell> concludedBlock = _stack!.removeFirst();
+
+    // Decrement index because we popped from the stack.
+    if (_currentBlockIndex != null && _currentBlockIndex! >= 1) {
+      _currentBlockIndex = _currentBlockIndex! - 1;
+    }
+
     setState(() {});
     final Cell doneCell = concludedBlock[DONE];
     doneCell.post(score);
@@ -469,10 +478,11 @@ class DiurnalState extends State<Diurnal> {
     if (_currentBlockIndex == null) return;
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
+
     // BUG: Null check operator used on null value.
     if (_currentBlockTimer != null) {
       var controller = _currentBlockTimer!.controller;
-      if (controller != null) controller.dispose();
+      // if (controller != null) controller.dispose();
     }
 
     final now = DateTime.now();
@@ -485,10 +495,13 @@ class DiurnalState extends State<Diurnal> {
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
+    print('Getting current block index...');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockStartTime = getBlockStartTime(block: block, now: now);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+
+      print('Checking ${blockStartTime} -> ${blockEndTime}');
       if (now.isAtSameMomentAs(blockStartTime) || now.isAfter(blockStartTime)) {
         if (now.isBefore(blockEndTime)) return i;
       }
@@ -510,6 +523,10 @@ class DiurnalState extends State<Diurnal> {
     Widget timer = const Text('00:00');
     if (_currentBlockIndex == 0 && _currentBlockTimer != null) {
       timer = _currentBlockTimer!;
+    } else {
+      print('_currentBlockIndex: ${_currentBlockIndex}');
+      print('_currentBlockTimer: ${_currentBlockTimer}');
+      print('Using zeroed-out timer :(');
     }
 
     final List<Cell> dueBlock = _stack!.first;
