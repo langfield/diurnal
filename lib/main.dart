@@ -97,9 +97,10 @@ Widget printConsoleText({required String text}) {
   );
 }
 
-String getCredentialsFromPrivateKey({required String privateKey}) {
+String getGSheets({required String privateKey}) {
   String escaped = privateKey.replaceAll('\n', '\\n');
-  return secrets.credentials.replaceAll('@@@@@@', escaped);
+  String credentials = secrets.credentials.replaceAll('@@@@@@', escaped);
+  return GSheets(credentials);
 }
 
 // Validate private key by attempting to construct ``GSheets`` instance.
@@ -108,8 +109,7 @@ bool isValidPrivateKey({required String? privateKey}) {
     return false;
   }
   try {
-    String credentials = getCredentialsFromPrivateKey(privateKey: privateKey);
-    final _ = GSheets(credentials);
+    final _ = getGSheets(privateKey: privateKey);
     return true;
   } on ArgumentError catch (e) {
     print('Caught error: $e');
@@ -193,12 +193,10 @@ Future<String> getPrivateKey({required FlutterSecureStorage storage}) async {
   return privateKey;
 }
 
-Future<GSheets?> getGSheets({required FlutterSecureStorage storage}) async {
+Future<GSheets?> getGSheetsAsync({required FlutterSecureStorage storage}) async {
   String? privateKey = await storage.read(key: KEY);
   if (!isValidPrivateKey(privateKey: privateKey)) return null;
-  String credentials = getCredentialsFromPrivateKey(privateKey: privateKey!);
-  final gsheets = GSheets(credentials);
-  await Future.delayed(const Duration(seconds: 1));
+  final gsheets = getGSheets(privateKey: privateKey);
   return gsheets;
 }
 
@@ -254,7 +252,8 @@ Future<List<Cell>> getCurrentBlock(
   print('    Getting pointer...');
   final int pointerIndex = await getPointer(gsheets: gsheets);
 
-  // Set pointer. We skip any block with end time prior to its deadline.
+  // Calculate new pointer based on current datetime.
+  // We skip any block with end time prior to its deadline.
   int newPointerIndex = 1;
   for (int i = 0; i < rows.length - 1; i++) {
     final List<Cell> row = rows[i];
@@ -438,7 +437,7 @@ class DiurnalState extends State<Diurnal> {
       if (!_gsheetsInitLock) {
         _gsheetsInitLock = true;
         print('${seed}: Instantiating gsheets object...');
-        getGSheets(storage: _storage).then((GSheets? gsheets) {
+        getGSheetsAsync(storage: _storage).then((GSheets? gsheets) {
           _gsheetsInitLock = false;
           if (gsheets != null) {
             setState(() {
