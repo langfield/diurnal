@@ -408,9 +408,7 @@ class DiurnalState extends State<Diurnal> {
     setState(() {});
   }
 
-  Future<void> showNotification({required GSheets gsheets, required int seed}) async {
-    final now = DateTime.now();
-    List<Cell> block = await getCurrentBlock(gsheets: gsheets, now: now);
+  Future<void> showNotification({required GSheets gsheets}) async {
     String body = 'All done for today :)';
     if (block.isNotEmpty) {
       body = block[TITLE].value;
@@ -418,7 +416,6 @@ class DiurnalState extends State<Diurnal> {
     await _flutterLocalNotificationsPlugin!.show(
         0, 'Diurnal', body, NOTIFICATION_DETAILS,
         payload: 'PAYLOAD');
-    print('${seed}: Sent notification.');
     setState(() {});
   }
 
@@ -506,7 +503,7 @@ class DiurnalState extends State<Diurnal> {
     final DateTime blockStartTime = getDateFromBlockRow(row: block, now: now);
     final DateTime blockEndTime = getBlockEndTime(row: block, now: now);
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
-    final int timerEndMilli = timerEnd.millisecondsSinceEpoch;
+    final int msEndTime = timerEnd.millisecondsSinceEpoch;
     final String blockStartStr = formatter.format(blockStartTime);
     final String blockEndStr = formatter.format(blockEndTime);
     final String blockDuration = '${int.parse(block[MINS].value)}min';
@@ -516,13 +513,17 @@ class DiurnalState extends State<Diurnal> {
     final Widget builds = Text('Number of builds: $_numBuilds');
     final Widget blockTimes = Text('$blockStartStr -> $blockEndStr UTC+0');
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
+    Duration timeLeft = timerEnd.difference(now);
 
-    void onEnd () => showNotification(gsheets: _gsheets!, seed: seed);
-    Widget timer = CountdownTimer(endTime: timerEndMilli, onEnd: onEnd);
-    const staticTimer = Text('00:00:00');
-    if (timerEndMilli <= 0) {
-      timer = staticTimer;
+    print('${seed}: TIMER SECONDS LEFT: ${timeLeft.inSeconds}');
+    Widget timer = Text('00:00:00');
+    if (timeLeft.inSeconds > 0) {
+      final now = DateTime.now();
+      List<Cell> block = getCurrentBlock(gsheets: gsheets, now: now);
+      void onEnd () => showNotification(gsheets: _gsheets!);
+      timer = CountdownTimer(endTime: msEndTime, onEnd: onEnd);
     }
+
     final Widget leftBlockColumn =
         Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
     final Widget rightBlockColumn =

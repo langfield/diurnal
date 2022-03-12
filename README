@@ -50,3 +50,60 @@ Won't fix
 - Timer doesn't turn different colors when time is low.
 - All text is the same size.
 - No padding between rows.
+
+
+Design
+======
+Actions:
+- Show notification when time left is 0s (when time runs out)
+- Fetch sheet (once every minute, set using a periodic timer in ``initState``)
+- Get worksheet (once during initialization)
+- Get private key/redirect to form (once during initialization)
+- Handle pass/fail (every time user presses button)
+
+Blocks are stored in a stack which we pop from when:
+- when time runs out
+- on pass/fail
+
+Sheet fetches simply refresh the stack, diurnal keeps track of which block is
+current using the pointer in the spreadsheet. Very simple. If you need to
+manually change the program's current block, simply move the pointer.
+
+In initState():
+- Call awaitable to check for private key and redirect to form if needed (can
+  use context in initState as done in current version).
+- Call awaitable to get and store worksheet as state, then refresh.
+- Instantiate periodic timer to fetch from sheet once-per-minute.
+
+In updateWorksheet() async:
+- If private key or worksheet object are null, do nothing.
+- Otherwise, fetch and update stack...
+- Read block from top of stack...
+- Instantiate/update countdown timer.
+
+In build():
+- If stack is null, display ``Fetching data...``.
+- Otherwise, read block from top of stack...
+- Instantiate/update countdown timer...
+- Display block (yellow if late).
+
+In onTimerEnd() async:
+- Show notification for the associated block.
+- Refresh.
+
+In passOrFail() async:
+- Pop block from top of stack.
+- Refresh.
+
+
+Need to make a distinction between the block we're currently inside, based on
+the local time, and the block we're displaying.
+
+Call these ``currentBlock``, and ``dueBlock``.
+
+In above architecture, we are displaying the ``dueBlock`` at all times, since
+we only pop from the stack in ``passOrFail()``. This is good. If you want to
+know the currentBlock, it is very easy to simply open Google sheets. So we will
+not support showing the ``currentBlock`` when a block is overdue.
+
+Maybe we can send the notification a little early to compensate.
