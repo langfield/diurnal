@@ -41,6 +41,7 @@ const Duration LEEWAY = Duration(minutes: 3);
 const Duration ONE_MINUTE = Duration(minutes: 1);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
+const TextStyle YELLOW = TextStyle(fontSize: FONT_SIZE, color: Colors.yellow);
 const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
@@ -206,10 +207,11 @@ Queue<List<Cell>> getStackFromRows(
     {required List<List<Cell>> rows, required int ptr}) {
   print('Getting stack from rows...');
   print('Rows size: ${rows.length}');
+  print('Looking for ptr: ${ptr}');
   final Queue<List<Cell>> stack = Queue();
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
-    if (row == ptr) {
+    if (row >= ptr) {
       stack.addAll(rows.sublist(i + 1, rows.length));
       return stack;
     }
@@ -372,6 +374,7 @@ class DiurnalState extends State<Diurnal> {
     _currentBlockIndex = getCurrentBlockIndex(now: now);
     print('Set current block index: ${_currentBlockIndex}');
     resetBlockTimer();
+    setState(() {});
   }
 
   Future<void> readPrivateKey() async {
@@ -432,6 +435,7 @@ class DiurnalState extends State<Diurnal> {
     // HTTP GET REQUEST.
     final int oldPtr = await getPointer();
     final int newPtr = computeNewPointer(rows: rows, now: now);
+    print('oldPtr: ${oldPtr}  newPtr: ${newPtr}');
     if (oldPtr < newPtr) await setPointer(ptr: newPtr);
     Queue<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
     return stack;
@@ -480,7 +484,7 @@ class DiurnalState extends State<Diurnal> {
     print('Current block index is null: ${_currentBlockIndex == null}');
     if (_currentBlockIndex == null) return;
     print('Current block index: ${_currentBlockIndex}');
-    print('Stack length: ${_stack!.length}');
+    print('Stack size: ${_stack!.length}');
     print(
         'Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
     if (_currentBlockIndex! >= _stack!.length) return;
@@ -526,8 +530,8 @@ class DiurnalState extends State<Diurnal> {
     if (_worksheet == null) return consoleMessage(text: 'Null worksheet :(');
     if (_stack!.isEmpty) return consoleMessage(text: 'All done :)');
 
-    Widget dueTimer = const Text('00:00');
-    Widget currentTimer = const Text('00:00');
+    Widget dueTimer = const Text('00:00:00', style: YELLOW);
+    Widget currentTimer = const Text('00:00:00');
 
     if (_currentBlockTimer != null) {
       currentTimer = _currentBlockTimer!;
@@ -556,7 +560,7 @@ class DiurnalState extends State<Diurnal> {
 
     final Widget blockTitle = Text(block[TITLE].value);
     final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
-    final Widget builds = Text('Number of builds: ${_numBuilds}');
+    final Widget builds = Text('Builds: ${_numBuilds}', style: YELLOW);
     final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr} UTC+0');
 
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
