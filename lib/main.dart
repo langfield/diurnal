@@ -37,7 +37,7 @@ const int LATE = 5;
 const int TIME = 6;
 
 const double FONT_SIZE = 15.0;
-const Duration LEEWAY = Duration(minutes: 3);
+const Duration LEEWAY = Duration(minutes: 1080);
 const Duration ONE_MINUTE = Duration(minutes: 1);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
@@ -186,17 +186,18 @@ int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
   int newPtr = 1;
   for (int i = 0; i < rows.length - 1; i++) {
     final List<Cell> block = rows[i];
-    final List<Cell> nextBlock = rows[i];
-    final int rowIndex = block[0].row;
-    final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
-    final DateTime nextBlockEndTime =
-        getBlockEndTime(block: nextBlock, now: now);
+    final List<Cell> nextBlock = rows[i + 1];
+    final int rowIndex = block[TITLE].row;
+
+    DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+    DateTime nextBlockEndTime = getBlockEndTime(block: nextBlock, now: now);
     final DateTime blockEndTimeWithLeeway = blockEndTime.add(LEEWAY);
     final List<DateTime> dates = [blockEndTimeWithLeeway, nextBlockEndTime];
 
-    // Take maximum of ``dates``.
+    // Take maximum of end time plus leeway and next end time.
     final deadline = dates.reduce((a, b) => a.isAfter(b) ? a : b);
     if (deadline.isBefore(now)) {
+      print('Moving new pointer to: ${block[TITLE].value}');
       newPtr = rowIndex;
     }
   }
@@ -436,11 +437,14 @@ class DiurnalState extends State<Diurnal> {
     print('Getting stack...');
     // HTTP GET REQUEST.
     List<List<Cell>> rows = await getRows(now: now);
+    List<List<Cell>>? nonemptys;
+    nonemptys = rows.where((block) => !hasEmptyFields(block: block)).toList();
     rows = filterRows(rows: rows);
     // HTTP GET REQUEST.
     final int oldPtr = await getPointer();
-    final int newPtr = computeNewPointer(rows: rows, now: now);
+    final int newPtr = max(oldPtr, computeNewPointer(rows: nonemptys, now: now));
     print('oldPtr: ${oldPtr}  newPtr: ${newPtr}');
+    // HTTP GET REQUEST.
     if (oldPtr < newPtr) await setPointer(ptr: newPtr);
     Queue<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
     return stack;
