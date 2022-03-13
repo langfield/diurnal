@@ -40,6 +40,7 @@ const int TIME = 6;
 const double FONT_SIZE = 15.0;
 const Duration LEEWAY = Duration(minutes: 1080);
 const Duration ONE_MINUTE = Duration(minutes: 1);
+const Duration THIRTY_SECS = Duration(seconds: 30);
 
 const TextStyle STYLE = TextStyle(fontSize: FONT_SIZE, color: Colors.white);
 const TextStyle YELLOW = TextStyle(fontSize: FONT_SIZE, color: Colors.yellow);
@@ -346,7 +347,7 @@ class DiurnalState extends State<Diurnal> {
     super.initState();
     readPrivateKey();
     _notifications = getNotificationsPlugin();
-    Timer.periodic(ONE_MINUTE, (Timer t) => updateWorksheet());
+    Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
   }
 
   void _refresh() {
@@ -428,6 +429,8 @@ class DiurnalState extends State<Diurnal> {
     resetBlockTimer();
     setState(() {});
     final Cell doneCell = concludedBlock[DONE];
+
+    // HTTP POST REQUEST.
     doneCell.post(score);
   }
 
@@ -525,7 +528,6 @@ class DiurnalState extends State<Diurnal> {
     print('Now: ${now}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
-      DateTime blockStartTime = getBlockStartTime(block: block, now: now);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       if (now.isBefore(blockEndTime)) return i;
     }
