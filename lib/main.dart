@@ -27,6 +27,7 @@ const int DAY_HEIGHT = 74;
 const int DAY_START_ROW = 2;
 const int POINTER_COLUMN = 50;
 const int POINTER_COLUMN_START_ROW = 1;
+const int DAY_END_ROW = DAY_START_ROW + DAY_HEIGHT - 1;
 
 const int TITLE = 0;
 const int DONE = 1;
@@ -212,9 +213,9 @@ Queue<List<Cell>> getStackFromRows(
   final Queue<List<Cell>> stack = Queue();
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
-    if (row >= ptr) {
-      print('Found row: ${row} >= ptr: ${ptr}');
-      print('Populating stack starting with row: ${rows[i + 1][TITLE].row}');
+    if (row >= ptr + 1) {
+      print('Found row: ${row} >= ptr + 1: ${ptr + 1}');
+      print('Populating stack starting with block: ${rows[i][TITLE].value}');
       stack.addAll(rows.sublist(i, rows.length));
       return stack;
     }
@@ -336,6 +337,7 @@ class DiurnalState extends State<Diurnal> {
 
   // INITIALIZED STATE
 
+  int _localPtr = 0;
   int _numBuilds = 0;
   final _storage = const FlutterSecureStorage();
 
@@ -415,6 +417,8 @@ class DiurnalState extends State<Diurnal> {
     if (_stack == null) return;
     if (_stack!.isEmpty) return;
     final List<Cell> concludedBlock = _stack!.removeFirst();
+    _localPtr = max(_localPtr, concludedBlock[TITLE].row);
+    print('Set local pointer to ${_localPtr}');
 
     // Decrement index because we popped from the stack.
     if (_currentBlockIndex != null && _currentBlockIndex! >= 1) {
@@ -444,7 +448,9 @@ class DiurnalState extends State<Diurnal> {
     rows = filterRows(rows: rows);
     // HTTP GET REQUEST.
     final int oldPtr = await getPointer();
-    final int newPtr = max(oldPtr, computeNewPointer(rows: nonemptys, now: now));
+    int newPtr = computeNewPointer(rows: nonemptys, now: now);
+    newPtr = max(oldPtr, newPtr);
+    newPtr = max(newPtr, _localPtr);
     print('oldPtr: ${oldPtr}  newPtr: ${newPtr}');
     // HTTP GET REQUEST.
     if (oldPtr < newPtr) await setPointer(ptr: newPtr);
@@ -521,8 +527,6 @@ class DiurnalState extends State<Diurnal> {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockStartTime = getBlockStartTime(block: block, now: now);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
-
-      print('Checking ${blockStartTime} -> ${blockEndTime}');
       if (now.isBefore(blockEndTime)) return i;
     }
     return null;
