@@ -213,7 +213,9 @@ Queue<List<Cell>> getStackFromRows(
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
     if (row >= ptr) {
-      stack.addAll(rows.sublist(i + 1, rows.length));
+      print('Found row: ${row} >= ptr: ${ptr}');
+      print('Populating stack starting with row: ${rows[i + 1][TITLE].row}');
+      stack.addAll(rows.sublist(i, rows.length));
       return stack;
     }
   }
