@@ -501,8 +501,7 @@ class DiurnalState extends State<Diurnal> {
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
-    final con = CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
-    _currentBlockTimer = CountdownTimer(controller: con);
+    _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
     print('Set timer for block: ${block[TITLE].value}');
     print('Timer set to: ${timerEnd.toLocal()}');
   }
