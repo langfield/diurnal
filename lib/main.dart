@@ -482,7 +482,7 @@ class DiurnalState extends State<Diurnal> {
   void resetBlockTimer() {
     print('Stack is null: ${_stack == null}');
     if (_stack == null) return;
-    print('Current block index is null: ${_currentBlockIndex == null}');
+    print('Current block index is null (should only happen at EOD): ${_currentBlockIndex == null}');
     if (_currentBlockIndex == null) return;
     print('Current block index: ${_currentBlockIndex}');
     print('Stack size: ${_stack!.length}');
@@ -514,9 +514,7 @@ class DiurnalState extends State<Diurnal> {
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
 
       print('Checking ${blockStartTime} -> ${blockEndTime}');
-      if (now.isAtSameMomentAs(blockStartTime) || now.isAfter(blockStartTime)) {
-        if (now.isBefore(blockEndTime)) return i;
-      }
+      if (now.isBefore(blockEndTime)) return i;
     }
     return null;
   }
