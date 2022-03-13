@@ -418,6 +418,7 @@ class DiurnalState extends State<Diurnal> {
       _currentBlockIndex = _currentBlockIndex! - 1;
     }
 
+    resetBlockTimer();
     setState(() {});
     final Cell doneCell = concludedBlock[DONE];
     doneCell.post(score);
