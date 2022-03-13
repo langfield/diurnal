@@ -391,10 +391,13 @@ class DiurnalState extends State<Diurnal> {
     print('Timer has ended, displaying notification...');
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
-    showNotification(block: _currentBlock!);
-    print(
-        'Incrementing _currentBlockIndex: ${_currentBlockIndex} -> ${_currentBlockIndex! + 1}');
+    var msg = 'Incrementing _currentBlockIndex: ';
+    var incremMsg = '${_currentBlockIndex} -> ${_currentBlockIndex! + 1}';
+    print('${msg}${incremMsg}');
     _currentBlockIndex = _currentBlockIndex! + 1;
+    if (_currentBlockIndex! >= _stack!.length) return;
+    _currentBlock = _stack!.elementAt(_currentBlockIndex!);
+    showNotification(block: _currentBlock!);
     resetBlockTimer();
     setState(() {});
   }
