@@ -333,6 +333,7 @@ class DiurnalState extends State<Diurnal> {
 
   int? _currentBlockIndex;
   CountdownTimer? _currentBlockTimer;
+  CountdownTimerController? _timerController;
   List<Cell>? _currentBlock;
   FlutterLocalNotificationsPlugin? _notifications;
 
@@ -394,7 +395,7 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<void> onTimerEnd() async {
-    print('Timer has ended, displaying notification...');
+    print('HANDLING TIMER END EVENT...');
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
     var msg = 'Incrementing _currentBlockIndex: ';
@@ -405,12 +406,15 @@ class DiurnalState extends State<Diurnal> {
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
     showNotification(block: _currentBlock!);
     resetBlockTimer();
-    setState(() {});
+    WidgetsBinding.instance?.addPostFrameCallback((_){
+      setState(() {});
+    });
   }
 
   Future<void> showNotification({required List<Cell> block}) async {
     String body = 'All done for today :)';
     if (block.isNotEmpty) body = block[TITLE].value;
+    print('Showing notification: ${body}');
     await _notifications!.show(0, 'Diurnal', body, DETAILS, payload: 'LOAD');
   }
 
@@ -423,6 +427,9 @@ class DiurnalState extends State<Diurnal> {
 
     // Decrement index because we popped from the stack.
     if (_currentBlockIndex != null && _currentBlockIndex! >= 1) {
+      var msg = 'Decrementing _currentBlockIndex: ';
+      var decremMsg = '${_currentBlockIndex} -> ${_currentBlockIndex! - 1}';
+      print('${msg}${decremMsg}');
       _currentBlockIndex = _currentBlockIndex! - 1;
     }
 
@@ -499,33 +506,38 @@ class DiurnalState extends State<Diurnal> {
 
   // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
-    print('Stack is null: ${_stack == null}');
+    // print('Stack is null: ${_stack == null}');
     if (_stack == null) return;
-    print('Current block index is null (should only happen at EOD): ${_currentBlockIndex == null}');
+    // print('Current block index is null (should only happen at EOD): ${_currentBlockIndex == null}');
     if (_currentBlockIndex == null) return;
     print('Current block index: ${_currentBlockIndex}');
-    print('Stack size: ${_stack!.length}');
-    print(
-        'Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
+    // print('Stack size: ${_stack!.length}');
+    // print('Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
 
-    print('Setting new timer...');
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
-    _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
-    print('SET TIMER FOR BLOCK: ${block[TITLE].value}');
-    print('Timer set to: ${timerEnd.toLocal()}');
+
+    print('SETTING TIMER FOR BLOCK: ${block[TITLE].value}');
+    if (_timerController == null) {
+      print('NEW TIMER INSTANTIATED TO: ${timerEnd.toLocal()}');
+      _timerController = CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
+      _currentBlockTimer = CountdownTimer(controller: _timerController);
+    } else {
+      print('Timer endTime updated to: ${timerEnd.toLocal()}');
+      _timerController!.endTime = msEndTime;
+    }
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
-    print('Getting current block index...');
-    print('Stack is null: ${_stack == null}');
-    print('Stack size: ${_stack!.length}');
-    print('Now: ${now}');
+    // print('Getting current block index...');
+    // print('Stack is null: ${_stack == null}');
+    // print('Stack size: ${_stack!.length}');
+    // print('Now: ${now}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
