@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
 import 'package:gsheets/gsheets.dart';
@@ -225,34 +226,6 @@ Queue<List<Cell>> getStackFromRows(
   return stack;
 }
 
-FlutterLocalNotificationsPlugin getNotificationsPlugin() {
-  // Initialise the plugin. Note ``app_icon`` needs to be a added as a
-  // drawable resource to the Android head project.
-  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('app_icon');
-  const IOSInitializationSettings initializationSettingsIOS =
-      IOSInitializationSettings();
-  const MacOSInitializationSettings initializationSettingsMacOS =
-      MacOSInitializationSettings();
-  const LinuxInitializationSettings initializationSettingsLinux =
-      LinuxInitializationSettings(defaultActionName: 'linux_notif');
-  const InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-    iOS: initializationSettingsIOS,
-    macOS: initializationSettingsMacOS,
-    linux: initializationSettingsLinux,
-  );
-  flutterLocalNotificationsPlugin.initialize(initializationSettings,
-      onSelectNotification: (String? payload) async {
-    if (payload != null) {
-      print('notification payload: $payload');
-    }
-  });
-  return flutterLocalNotificationsPlugin;
-}
-
 String? validatePrivateKey(String? candidate) {
   if (candidate == null || candidate.isEmpty) {
     return 'Empty private key';
@@ -406,7 +379,7 @@ class DiurnalState extends State<Diurnal> {
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
     showNotification(block: _currentBlock!);
     resetBlockTimer();
-    WidgetsBinding.instance?.addPostFrameCallback((_){
+    WidgetsBinding.instance?.addPostFrameCallback((_) {
       setState(() {});
     });
   }
@@ -502,6 +475,34 @@ class DiurnalState extends State<Diurnal> {
     await newPointer.post(POINTER);
   }
 
+  void onDidReceiveLocalNotification(
+      int id, String title, String body, String payload) async {
+    // display a dialog with the notification details, tap ok to go to another page
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: Text('Ok'),
+            onPressed: () async {
+              Navigator.of(context, rootNavigator: true).pop();
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => Diurnal(),
+                ),
+              );
+            },
+          )
+        ],
+      ),
+    );
+  }
+
+
   // METHODS
 
   // TODO: Should ``now`` be passed as an argument?
@@ -521,7 +522,8 @@ class DiurnalState extends State<Diurnal> {
     print('SETTING TIMER FOR BLOCK: ${block[TITLE].value}');
     if (_timerController == null) {
       print('NEW TIMER INSTANTIATED TO: ${timerEnd.toLocal()}');
-      _timerController = CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
+      _timerController =
+          CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
       _currentBlockTimer = CountdownTimer(controller: _timerController);
     } else {
       print('Timer endTime updated to: ${timerEnd.toLocal()}');
@@ -537,6 +539,36 @@ class DiurnalState extends State<Diurnal> {
     }
     return null;
   }
+
+  FlutterLocalNotificationsPlugin getNotificationsPlugin() {
+    // Initialise the plugin. Note ``app_icon`` needs to be a added as a
+    // drawable resource to the Android head project.
+    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('app_icon');
+    const IOSInitializationSettings initializationSettingsIOS =
+        IOSInitializationSettings(
+            onDidReceiveLocalNotification: onDidReceiveLocalNotification);
+    const MacOSInitializationSettings initializationSettingsMacOS =
+        MacOSInitializationSettings();
+    const LinuxInitializationSettings initializationSettingsLinux =
+        LinuxInitializationSettings(defaultActionName: 'linux_notif');
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+      macOS: initializationSettingsMacOS,
+      linux: initializationSettingsLinux,
+    );
+    flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: (String? payload) async {
+      if (payload != null) {
+        print('notification payload: $payload');
+      }
+    });
+    return flutterLocalNotificationsPlugin;
+  }
+
 
   @override
   Widget build(BuildContext context) {
