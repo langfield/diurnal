@@ -506,13 +506,9 @@ class DiurnalState extends State<Diurnal> {
 
   // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
-    // print('Stack is null: ${_stack == null}');
     if (_stack == null) return;
-    // print('Current block index is null (should only happen at EOD): ${_currentBlockIndex == null}');
     if (_currentBlockIndex == null) return;
     print('Current block index: ${_currentBlockIndex}');
-    // print('Stack size: ${_stack!.length}');
-    // print('Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
 
@@ -534,10 +530,6 @@ class DiurnalState extends State<Diurnal> {
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
-    // print('Getting current block index...');
-    // print('Stack is null: ${_stack == null}');
-    // print('Stack size: ${_stack!.length}');
-    // print('Now: ${now}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
@@ -604,7 +596,6 @@ class DiurnalState extends State<Diurnal> {
         Column(crossAxisAlignment: CROSS_END, children: blockTimeWidgets);
 
     final expandedLeft = Expanded(child: leftBlockColumn);
-    // final expandedRight = Expanded(child: rightBlockColumn);
     final List<Widget> blockColumns = [expandedLeft, rightBlockColumn];
 
     const passText = Text('PASS', style: STYLE);
