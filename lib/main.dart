@@ -309,7 +309,7 @@ class PaddingLayerState extends State<PaddingLayer> {
     final height = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.all(0.05 * min(width, height)),
+        padding: EdgeInsets.all(0.1 * min(width, height)),
         child: const Diurnal(),
       ),
     );
