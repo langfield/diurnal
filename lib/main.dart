@@ -71,7 +71,7 @@ final formFieldDecoration = InputDecoration(
 );
 
 const CrossAxisAlignment CROSS_START = CrossAxisAlignment.start;
-const CrossAxisAlignment CROSS_END = CrossAxisAlignment.start;
+const CrossAxisAlignment CROSS_END = CrossAxisAlignment.end;
 const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
 const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
 
@@ -517,7 +517,7 @@ class DiurnalState extends State<Diurnal> {
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
     _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
-    print('Set timer for block: ${block[TITLE].value}');
+    print('SET TIMER FOR BLOCK: ${block[TITLE].value}');
     print('Timer set to: ${timerEnd.toLocal()}');
   }
 
@@ -576,15 +576,24 @@ class DiurnalState extends State<Diurnal> {
     final Widget blockTitle = Text(block[TITLE].value);
     final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
     final Widget builds = Text('Builds: ${_numBuilds}', style: YELLOW);
-    final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr} UTC+0');
+    final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr}');
+
+    final int hourOffset = now.timeZoneOffset.inHours;
+    String offset = '${hourOffset}';
+    if (hourOffset >= 0) offset = '+${offset}';
+    final Widget timezone = Text('${now.timeZoneName}${offset}');
+    final List<Widget> blockTimeWidgets = [blockTimes, timezone];
 
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
     final Widget leftBlockColumn =
         Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
     final Widget rightBlockColumn =
-        Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
-    final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
+        Column(crossAxisAlignment: CROSS_END, children: blockTimeWidgets);
+
+    final expandedLeft = Expanded(child: leftBlockColumn);
+    // final expandedRight = Expanded(child: rightBlockColumn);
+    final List<Widget> blockColumns = [expandedLeft, rightBlockColumn];
 
     const passText = Text('PASS', style: STYLE);
     const failText = Text('FAIL', style: STYLE);
