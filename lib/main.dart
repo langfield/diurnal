@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
+import 'package:rxdart/subjects.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter_countdown_timer/index.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -49,15 +50,6 @@ const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
 
-const AndroidNotificationDetails ANDROID_DETAILS = AndroidNotificationDetails(
-    'your channel id', 'your channel name',
-    channelDescription: 'your channel description',
-    importance: Importance.max,
-    priority: Priority.high,
-    ticker: 'ticker');
-const NotificationDetails DETAILS =
-    NotificationDetails(android: ANDROID_DETAILS);
-
 final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
@@ -76,12 +68,39 @@ const CrossAxisAlignment CROSS_END = CrossAxisAlignment.end;
 const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
 const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
 
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+/// Streams are created so that app can respond to notification-related events
+/// since the plugin is initialised in the `main` function
+final BehaviorSubject<ReceivedNotification> didReceiveLocalNotificationSubject =
+    BehaviorSubject<ReceivedNotification>();
+
+final BehaviorSubject<String?> selectNotificationSubject =
+    BehaviorSubject<String?>();
+
+class ReceivedNotification {
+  ReceivedNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.payload,
+  });
+
+  final int id;
+  final String? title;
+  final String? body;
+  final String? payload;
+}
+
+String? selectedNotificationPayload;
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // FUNCTIONS
 
 // Run the main app.
-void main() {
+void main() async {
   runApp(const TopLevel());
 }
 
@@ -319,6 +338,9 @@ class DiurnalState extends State<Diurnal> {
   @override
   void initState() {
     super.initState();
+    _requestPermissions();
+    _configureDidReceiveLocalNotificationSubject();
+    _configureSelectNotificationSubject();
     readPrivateKey();
     _notifications = getNotificationsPlugin();
     Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
@@ -388,7 +410,9 @@ class DiurnalState extends State<Diurnal> {
     String body = 'All done for today :)';
     if (block.isNotEmpty) body = block[TITLE].value;
     print('Showing notification: ${body}');
-    await _notifications!.show(0, 'Diurnal', body, DETAILS, payload: 'LOAD');
+
+    const NotificationDetails details = NotificationDetails();
+    await _notifications!.show(0, 'Diurnal', body, details, payload: 'LOAD');
   }
 
   Future<void> passOrFail({required double score}) async {
@@ -475,40 +499,19 @@ class DiurnalState extends State<Diurnal> {
     await newPointer.post(POINTER);
   }
 
-  void onDidReceiveLocalNotification(
-      int id, String title, String body, String payload) async {
-    // display a dialog with the notification details, tap ok to go to another page
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => CupertinoAlertDialog(
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: Text('Ok'),
-            onPressed: () async {
-              Navigator.of(context, rootNavigator: true).pop();
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => Diurnal(),
-                ),
-              );
-            },
-          )
-        ],
-      ),
-    );
-  }
-
-
   // METHODS
 
   // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
-    if (_stack == null) return;
-    if (_currentBlockIndex == null) return;
+    if (_stack == null) {
+      print('Returning early from resetBlockTimer() because _stack is null.');
+      return;
+    }
+    if (_currentBlockIndex == null) {
+      print(
+          'Returning early from resetBlockTimer() because _currentBlockIndex is null.');
+      return;
+    }
     print('Current block index: ${_currentBlockIndex}');
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
@@ -537,38 +540,134 @@ class DiurnalState extends State<Diurnal> {
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       if (now.isBefore(blockEndTime)) return i;
     }
+    print(
+        'WARNING: Couldn\'t find current block in stack of size ${_stack!.length}. Is the day over?');
     return null;
   }
 
   FlutterLocalNotificationsPlugin getNotificationsPlugin() {
-    // Initialise the plugin. Note ``app_icon`` needs to be a added as a
-    // drawable resource to the Android head project.
-    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        FlutterLocalNotificationsPlugin();
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('app_icon');
-    const IOSInitializationSettings initializationSettingsIOS =
+
+    /// Note: permissions aren't requested here just to demonstrate that can be
+    /// done later
+    final IOSInitializationSettings initializationSettingsIOS =
         IOSInitializationSettings(
-            onDidReceiveLocalNotification: onDidReceiveLocalNotification);
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+            onDidReceiveLocalNotification: (
+              int id,
+              String? title,
+              String? body,
+              String? payload,
+            ) async {
+              didReceiveLocalNotificationSubject.add(
+                ReceivedNotification(
+                  id: id,
+                  title: title,
+                  body: body,
+                  payload: payload,
+                ),
+              );
+            });
+
     const MacOSInitializationSettings initializationSettingsMacOS =
-        MacOSInitializationSettings();
-    const LinuxInitializationSettings initializationSettingsLinux =
-        LinuxInitializationSettings(defaultActionName: 'linux_notif');
-    const InitializationSettings initializationSettings = InitializationSettings(
+        MacOSInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+
+    final LinuxInitializationSettings initializationSettingsLinux =
+        LinuxInitializationSettings(
+      defaultActionName: 'Open notification',
+      defaultIcon: AssetsLinuxIcon('icons/app_icon.png'),
+    );
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
       macOS: initializationSettingsMacOS,
       linux: initializationSettingsLinux,
     );
+
     flutterLocalNotificationsPlugin.initialize(initializationSettings,
         onSelectNotification: (String? payload) async {
       if (payload != null) {
-        print('notification payload: $payload');
+        debugPrint('notification payload: $payload');
       }
+      selectedNotificationPayload = payload;
+      selectNotificationSubject.add(payload);
     });
+
     return flutterLocalNotificationsPlugin;
   }
 
+  void _requestPermissions() {
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+  }
+
+  void _configureDidReceiveLocalNotificationSubject() {
+    didReceiveLocalNotificationSubject.stream
+        .listen((ReceivedNotification receivedNotification) async {
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) => CupertinoAlertDialog(
+          title: receivedNotification.title != null
+              ? Text(receivedNotification.title!)
+              : null,
+          content: receivedNotification.body != null
+              ? Text(receivedNotification.body!)
+              : null,
+          actions: <Widget>[
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () async {
+                Navigator.of(context, rootNavigator: true).pop();
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) => Diurnal(),
+                  ),
+                );
+              },
+              child: const Text('Ok'),
+            )
+          ],
+        ),
+      );
+    });
+  }
+
+  void _configureSelectNotificationSubject() {
+    selectNotificationSubject.stream.listen((String? payload) async {
+      await Navigator.pushNamed(context, '/secondPage');
+    });
+  }
+
+  @override
+  void dispose() {
+    didReceiveLocalNotificationSubject.close();
+    selectNotificationSubject.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
