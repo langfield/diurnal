@@ -343,7 +343,10 @@ class DiurnalState extends State<Diurnal> {
     _configureSelectNotificationSubject();
     readPrivateKey();
     _notifications = getNotificationsPlugin();
-    Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
+    updateWorksheet();
+    Future.delayed(const Duration(seconds: 10), () {
+      Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
+    });
   }
 
   void _refresh() {
