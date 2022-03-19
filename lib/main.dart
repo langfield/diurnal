@@ -3,8 +3,10 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
+import 'package:rxdart/subjects.dart';
 import 'package:gsheets/gsheets.dart';
 import 'package:flutter_countdown_timer/index.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -48,15 +50,6 @@ const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
 
-const AndroidNotificationDetails ANDROID_DETAILS = AndroidNotificationDetails(
-    'your channel id', 'your channel name',
-    channelDescription: 'your channel description',
-    importance: Importance.max,
-    priority: Priority.high,
-    ticker: 'ticker');
-const NotificationDetails DETAILS =
-    NotificationDetails(android: ANDROID_DETAILS);
-
 final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
@@ -71,16 +64,43 @@ final formFieldDecoration = InputDecoration(
 );
 
 const CrossAxisAlignment CROSS_START = CrossAxisAlignment.start;
-const CrossAxisAlignment CROSS_END = CrossAxisAlignment.start;
+const CrossAxisAlignment CROSS_END = CrossAxisAlignment.end;
 const MainAxisAlignment MAIN_CENTER = MainAxisAlignment.center;
 const MainAxisAlignment MAIN_BETWEEN = MainAxisAlignment.spaceBetween;
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+/// Streams are created so that app can respond to notification-related events
+/// since the plugin is initialised in the `main` function
+final BehaviorSubject<ReceivedNotification> didReceiveLocalNotificationSubject =
+    BehaviorSubject<ReceivedNotification>();
+
+final BehaviorSubject<String?> selectNotificationSubject =
+    BehaviorSubject<String?>();
+
+class ReceivedNotification {
+  ReceivedNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.payload,
+  });
+
+  final int id;
+  final String? title;
+  final String? body;
+  final String? payload;
+}
+
+String? selectedNotificationPayload;
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // FUNCTIONS
 
 // Run the main app.
-void main() {
+void main() async {
   runApp(const TopLevel());
 }
 
@@ -225,34 +245,6 @@ Queue<List<Cell>> getStackFromRows(
   return stack;
 }
 
-FlutterLocalNotificationsPlugin getNotificationsPlugin() {
-  // Initialise the plugin. Note ``app_icon`` needs to be a added as a
-  // drawable resource to the Android head project.
-  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('app_icon');
-  const IOSInitializationSettings initializationSettingsIOS =
-      IOSInitializationSettings();
-  const MacOSInitializationSettings initializationSettingsMacOS =
-      MacOSInitializationSettings();
-  const LinuxInitializationSettings initializationSettingsLinux =
-      LinuxInitializationSettings(defaultActionName: 'linux_notif');
-  const InitializationSettings initializationSettings = InitializationSettings(
-    android: initializationSettingsAndroid,
-    iOS: initializationSettingsIOS,
-    macOS: initializationSettingsMacOS,
-    linux: initializationSettingsLinux,
-  );
-  flutterLocalNotificationsPlugin.initialize(initializationSettings,
-      onSelectNotification: (String? payload) async {
-    if (payload != null) {
-      print('notification payload: $payload');
-    }
-  });
-  return flutterLocalNotificationsPlugin;
-}
-
 String? validatePrivateKey(String? candidate) {
   if (candidate == null || candidate.isEmpty) {
     return 'Empty private key';
@@ -309,7 +301,7 @@ class PaddingLayerState extends State<PaddingLayer> {
     final height = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.all(0.05 * min(width, height)),
+        padding: EdgeInsets.all(0.1 * min(width, height)),
         child: const Diurnal(),
       ),
     );
@@ -333,6 +325,7 @@ class DiurnalState extends State<Diurnal> {
 
   int? _currentBlockIndex;
   CountdownTimer? _currentBlockTimer;
+  CountdownTimerController? _timerController;
   List<Cell>? _currentBlock;
   FlutterLocalNotificationsPlugin? _notifications;
 
@@ -345,9 +338,15 @@ class DiurnalState extends State<Diurnal> {
   @override
   void initState() {
     super.initState();
+    _requestPermissions();
+    _configureDidReceiveLocalNotificationSubject();
+    _configureSelectNotificationSubject();
     readPrivateKey();
     _notifications = getNotificationsPlugin();
-    Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
+    updateWorksheet();
+    Future.delayed(const Duration(seconds: 10), () {
+      Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
+    });
   }
 
   void _refresh() {
@@ -394,7 +393,7 @@ class DiurnalState extends State<Diurnal> {
   }
 
   Future<void> onTimerEnd() async {
-    print('Timer has ended, displaying notification...');
+    print('HANDLING TIMER END EVENT...');
     if (_currentBlock == null) return;
     if (_currentBlockIndex == null) return;
     var msg = 'Incrementing _currentBlockIndex: ';
@@ -405,13 +404,18 @@ class DiurnalState extends State<Diurnal> {
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
     showNotification(block: _currentBlock!);
     resetBlockTimer();
-    setState(() {});
+    WidgetsBinding.instance?.addPostFrameCallback((_) {
+      setState(() {});
+    });
   }
 
   Future<void> showNotification({required List<Cell> block}) async {
     String body = 'All done for today :)';
     if (block.isNotEmpty) body = block[TITLE].value;
-    await _notifications!.show(0, 'Diurnal', body, DETAILS, payload: 'LOAD');
+    print('Showing notification: ${body}');
+
+    const NotificationDetails details = NotificationDetails();
+    await _notifications!.show(0, 'Diurnal', body, details, payload: 'LOAD');
   }
 
   Future<void> passOrFail({required double score}) async {
@@ -423,6 +427,9 @@ class DiurnalState extends State<Diurnal> {
 
     // Decrement index because we popped from the stack.
     if (_currentBlockIndex != null && _currentBlockIndex! >= 1) {
+      var msg = 'Decrementing _currentBlockIndex: ';
+      var decremMsg = '${_currentBlockIndex} -> ${_currentBlockIndex! - 1}';
+      print('${msg}${decremMsg}');
       _currentBlockIndex = _currentBlockIndex! - 1;
     }
 
@@ -499,39 +506,170 @@ class DiurnalState extends State<Diurnal> {
 
   // TODO: Should ``now`` be passed as an argument?
   void resetBlockTimer() {
-    print('Stack is null: ${_stack == null}');
-    if (_stack == null) return;
-    print('Current block index is null (should only happen at EOD): ${_currentBlockIndex == null}');
-    if (_currentBlockIndex == null) return;
+    if (_stack == null) {
+      print('Returning early from resetBlockTimer() because _stack is null.');
+      return;
+    }
+    if (_currentBlockIndex == null) {
+      print(
+          'Returning early from resetBlockTimer() because _currentBlockIndex is null.');
+      return;
+    }
     print('Current block index: ${_currentBlockIndex}');
-    print('Stack size: ${_stack!.length}');
-    print(
-        'Current block index >= stack length: ${_currentBlockIndex! >= _stack!.length}');
     if (_currentBlockIndex! >= _stack!.length) return;
     _currentBlock = _stack!.elementAt(_currentBlockIndex!);
 
-    print('Setting new timer...');
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
     final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
     final DateTime timerEnd = getTimerEnd(end: blockEndTime, now: now);
     final int msEndTime = timerEnd.millisecondsSinceEpoch;
-    _currentBlockTimer = CountdownTimer(endTime: msEndTime, onEnd: onTimerEnd);
-    print('Set timer for block: ${block[TITLE].value}');
-    print('Timer set to: ${timerEnd.toLocal()}');
+
+    print('SETTING TIMER FOR BLOCK: ${block[TITLE].value}');
+    if (_timerController == null) {
+      print('NEW TIMER INSTANTIATED TO: ${timerEnd.toLocal()}');
+      _timerController =
+          CountdownTimerController(endTime: msEndTime, onEnd: onTimerEnd);
+      _currentBlockTimer = CountdownTimer(controller: _timerController);
+    } else {
+      print('Timer endTime updated to: ${timerEnd.toLocal()}');
+      _timerController!.endTime = msEndTime;
+    }
   }
 
   int? getCurrentBlockIndex({required DateTime now}) {
-    print('Getting current block index...');
-    print('Stack is null: ${_stack == null}');
-    print('Stack size: ${_stack!.length}');
-    print('Now: ${now}');
     for (int i = 0; i < _stack!.length; i++) {
       final List<Cell> block = _stack!.elementAt(i);
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       if (now.isBefore(blockEndTime)) return i;
     }
+    print(
+        'WARNING: Couldn\'t find current block in stack of size ${_stack!.length}. Is the day over?');
     return null;
+  }
+
+  FlutterLocalNotificationsPlugin getNotificationsPlugin() {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('app_icon');
+
+    /// Note: permissions aren't requested here just to demonstrate that can be
+    /// done later
+    final IOSInitializationSettings initializationSettingsIOS =
+        IOSInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+            onDidReceiveLocalNotification: (
+              int id,
+              String? title,
+              String? body,
+              String? payload,
+            ) async {
+              didReceiveLocalNotificationSubject.add(
+                ReceivedNotification(
+                  id: id,
+                  title: title,
+                  body: body,
+                  payload: payload,
+                ),
+              );
+            });
+
+    const MacOSInitializationSettings initializationSettingsMacOS =
+        MacOSInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+
+    final LinuxInitializationSettings initializationSettingsLinux =
+        LinuxInitializationSettings(
+      defaultActionName: 'Open notification',
+      defaultIcon: AssetsLinuxIcon('icons/app_icon.png'),
+    );
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+      macOS: initializationSettingsMacOS,
+      linux: initializationSettingsLinux,
+    );
+
+    flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: (String? payload) async {
+      if (payload != null) {
+        debugPrint('notification payload: $payload');
+      }
+      selectedNotificationPayload = payload;
+      selectNotificationSubject.add(payload);
+    });
+
+    return flutterLocalNotificationsPlugin;
+  }
+
+  void _requestPermissions() {
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+    flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+  }
+
+  void _configureDidReceiveLocalNotificationSubject() {
+    didReceiveLocalNotificationSubject.stream
+        .listen((ReceivedNotification receivedNotification) async {
+      await showDialog(
+        context: context,
+        builder: (BuildContext context) => CupertinoAlertDialog(
+          title: receivedNotification.title != null
+              ? Text(receivedNotification.title!)
+              : null,
+          content: receivedNotification.body != null
+              ? Text(receivedNotification.body!)
+              : null,
+          actions: <Widget>[
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () async {
+                Navigator.of(context, rootNavigator: true).pop();
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) => Diurnal(),
+                  ),
+                );
+              },
+              child: const Text('Ok'),
+            )
+          ],
+        ),
+      );
+    });
+  }
+
+  void _configureSelectNotificationSubject() {
+    selectNotificationSubject.stream.listen((String? payload) async {
+      await Navigator.pushNamed(context, '/secondPage');
+    });
+  }
+
+  @override
+  void dispose() {
+    didReceiveLocalNotificationSubject.close();
+    selectNotificationSubject.close();
+    super.dispose();
   }
 
   @override
@@ -576,15 +714,23 @@ class DiurnalState extends State<Diurnal> {
     final Widget blockTitle = Text(block[TITLE].value);
     final Widget blockProps = Text('${blockDuration}  ${blockWeight}');
     final Widget builds = Text('Builds: ${_numBuilds}', style: YELLOW);
-    final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr} UTC+0');
+    final Widget blockTimes = Text('${blockStartStr} -> ${blockEndStr}');
+
+    final int hourOffset = now.timeZoneOffset.inHours;
+    String offset = '${hourOffset}';
+    if (hourOffset >= 0) offset = '+${offset}';
+    final Widget timezone = Text('${now.timeZoneName}${offset}');
+    final List<Widget> blockTimeWidgets = [blockTimes, timezone];
 
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
     final Widget leftBlockColumn =
         Column(crossAxisAlignment: CROSS_START, children: leftBlockWidgets);
     final Widget rightBlockColumn =
-        Column(crossAxisAlignment: CROSS_END, children: <Widget>[blockTimes]);
-    final List<Widget> blockColumns = [leftBlockColumn, rightBlockColumn];
+        Column(crossAxisAlignment: CROSS_END, children: blockTimeWidgets);
+
+    final expandedLeft = Expanded(child: leftBlockColumn);
+    final List<Widget> blockColumns = [expandedLeft, rightBlockColumn];
 
     const passText = Text('PASS', style: STYLE);
     const failText = Text('FAIL', style: STYLE);
