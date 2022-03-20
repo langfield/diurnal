@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -8,8 +7,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/subjects.dart';
 import 'package:gsheets/gsheets.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_countdown_timer/index.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_native_timezone/flutter_native_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:diurnal/SECRETS.dart' as secrets;
@@ -101,6 +103,10 @@ String? selectedNotificationPayload;
 
 // Run the main app.
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final String? timeZoneName = await FlutterNativeTimezone.getLocalTimezone();
+  tz.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation(timeZoneName!));
   runApp(const TopLevel());
 }
 
@@ -226,12 +232,12 @@ int computeNewPointer({required List<List<Cell>> rows, required DateTime now}) {
   return newPtr;
 }
 
-Queue<List<Cell>> getStackFromRows(
+List<List<Cell>> getStackFromRows(
     {required List<List<Cell>> rows, required int ptr}) {
   print('Getting stack from rows...');
   print('Rows size: ${rows.length}');
   print('Looking for ptr: ${ptr}');
-  final Queue<List<Cell>> stack = Queue();
+  final List<List<Cell>> stack = [];
   for (int i = 0; i < rows.length - 1; i++) {
     final int row = rows[i][TITLE].row;
     if (row >= ptr + 1) {
@@ -320,7 +326,7 @@ class DiurnalState extends State<Diurnal> {
 
   String? _key;
 
-  Queue<List<Cell>>? _stack;
+  List<List<Cell>>? _stack;
   Worksheet? _worksheet;
 
   int? _currentBlockIndex;
@@ -379,6 +385,7 @@ class DiurnalState extends State<Diurnal> {
     _currentBlockIndex = getCurrentBlockIndex(now: now);
     print('Set current block index: ${_currentBlockIndex}');
     resetBlockTimer();
+    scheduleNotification();
     setState(() {});
   }
 
@@ -400,28 +407,61 @@ class DiurnalState extends State<Diurnal> {
     var incremMsg = '${_currentBlockIndex} -> ${_currentBlockIndex! + 1}';
     print('${msg}${incremMsg}');
     _currentBlockIndex = _currentBlockIndex! + 1;
-    if (_currentBlockIndex! >= _stack!.length) return;
-    _currentBlock = _stack!.elementAt(_currentBlockIndex!);
-    showNotification(block: _currentBlock!);
     resetBlockTimer();
     WidgetsBinding.instance?.addPostFrameCallback((_) {
       setState(() {});
     });
   }
 
-  Future<void> showNotification({required List<Cell> block}) async {
-    String body = 'All done for today :)';
-    if (block.isNotEmpty) body = block[TITLE].value;
-    print('Showing notification: ${body}');
+  Future<void> scheduleNotification() async {
+    if (_currentBlock == null) {
+      print('Not scheduling notifications as _currentBlock is null');
+      return;
+    }
+    if (_currentBlockIndex == null) {
+      print('Not scheduling notifications as _currentBlockIndex is null');
+      return;
+    }
 
-    const NotificationDetails details = NotificationDetails();
-    await _notifications!.show(0, 'Diurnal', body, details, payload: 'LOAD');
+    await _notifications!.cancelAll();
+
+    final List<List<Cell>> blocks = _stack!.sublist(_currentBlockIndex!);
+    for (final List<Cell> block in blocks) {
+      String body = 'All done for today :)';
+      if (block.isNotEmpty) body = block[TITLE].value;
+      print('Scheduling notification: ${body}');
+
+      final now = DateTime.now();
+      final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
+      final notificationDateTime = tz.TZDateTime.from(blockEndTime, tz.local);
+
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails('your channel id', 'your channel name',
+              channelDescription: 'your channel description',
+              importance: Importance.max,
+              priority: Priority.high,
+              ticker: 'ticker');
+      const IOSNotificationDetails iOSPlatformChannelSpecifics =
+          IOSNotificationDetails(subtitle: 'the subtitle');
+      const MacOSNotificationDetails macOSPlatformChannelSpecifics =
+          MacOSNotificationDetails(subtitle: 'the subtitle');
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+          android: androidPlatformChannelSpecifics,
+          iOS: iOSPlatformChannelSpecifics,
+          macOS: macOSPlatformChannelSpecifics);
+
+      await _notifications!.zonedSchedule(
+          0, 'Diurnal', body, notificationDateTime, platformChannelSpecifics,
+          androidAllowWhileIdle: true,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime);
+    }
   }
 
   Future<void> passOrFail({required double score}) async {
     if (_stack == null) return;
     if (_stack!.isEmpty) return;
-    final List<Cell> concludedBlock = _stack!.removeFirst();
+    final List<Cell> concludedBlock = _stack!.removeAt(0);
     _localPtr = max(_localPtr, concludedBlock[TITLE].row);
     print('Set local pointer to ${_localPtr}');
 
@@ -449,7 +489,7 @@ class DiurnalState extends State<Diurnal> {
     await Navigator.push(context, route);
   }
 
-  Future<Queue<List<Cell>>> getStack({required DateTime now}) async {
+  Future<List<List<Cell>>> getStack({required DateTime now}) async {
     print('Getting stack...');
     // HTTP GET REQUEST.
     List<List<Cell>> rows = await getRows(now: now);
@@ -464,7 +504,7 @@ class DiurnalState extends State<Diurnal> {
     print('oldPtr: ${oldPtr}  newPtr: ${newPtr}');
     // HTTP GET REQUEST.
     if (oldPtr < newPtr) await setPointer(ptr: newPtr);
-    Queue<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
+    List<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
     return stack;
   }
 
@@ -517,7 +557,7 @@ class DiurnalState extends State<Diurnal> {
     }
     print('Current block index: ${_currentBlockIndex}');
     if (_currentBlockIndex! >= _stack!.length) return;
-    _currentBlock = _stack!.elementAt(_currentBlockIndex!);
+    _currentBlock = _stack![_currentBlockIndex!];
 
     final now = DateTime.now();
     final List<Cell> block = _currentBlock!;
@@ -539,7 +579,7 @@ class DiurnalState extends State<Diurnal> {
 
   int? getCurrentBlockIndex({required DateTime now}) {
     for (int i = 0; i < _stack!.length; i++) {
-      final List<Cell> block = _stack!.elementAt(i);
+      final List<Cell> block = _stack![i];
       DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       if (now.isBefore(blockEndTime)) return i;
     }
@@ -647,7 +687,7 @@ class DiurnalState extends State<Diurnal> {
                 await Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (BuildContext context) => Diurnal(),
+                    builder: (BuildContext context) => const Diurnal(),
                   ),
                 );
               },

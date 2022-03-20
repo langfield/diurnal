@@ -1,3 +1,13 @@
+Usage
+-----
+When compiling for an android emulator, if you get a
+``LocationNotFoundException``, try setting the timezone manually within the
+android system settings.
+
+
+
+
+
 Let's talk about screens. When the user gets a notification, it contains the
 following data:
 - Title
