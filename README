@@ -5,6 +5,8 @@ Usage
   android system settings.
 - If heads-up notifications are not working in the android emulator, try
   uninstalling the app, closing the emulator, and building again.
+- If emulator will not start, try opening 'File -> Project Structure -> Project
+  Settings -> Modules'. Then right click on 'diurnal_android', and delete it.
 
 
 
