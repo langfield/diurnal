@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -10,6 +11,8 @@ import 'package:gsheets/gsheets.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_countdown_timer/index.dart';
+import 'package:background_fetch/background_fetch.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_native_timezone/flutter_native_timezone.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -40,6 +43,9 @@ const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
 const int TIME = 6;
+
+/// SharedPreferences data key.
+const EVENTS_KEY = "fetch_events";
 
 const double FONT_SIZE = 15.0;
 const Duration LEEWAY = Duration(minutes: 1080);
@@ -108,6 +114,54 @@ void main() async {
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation(timeZoneName!));
   runApp(const TopLevel());
+
+  // Register to receive BackgroundFetch events after app is terminated.
+  // Requires {stopOnTerminate: false, enableHeadless: true}
+  BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
+}
+
+/// This "Headless Task" is run when app is terminated.
+void backgroundFetchHeadlessTask(HeadlessTask task) async {
+  var taskId = task.taskId;
+  var timeout = task.timeout;
+  if (timeout) {
+    print("[BackgroundFetch] Headless task timed-out: $taskId");
+    BackgroundFetch.finish(taskId);
+    return;
+  }
+
+  print("[BackgroundFetch] Headless event received: $taskId");
+
+  var timestamp = DateTime.now();
+
+  var prefs = await SharedPreferences.getInstance();
+
+  // Read fetch_events from SharedPreferences
+  var events = <String>[];
+  var json = prefs.getString(EVENTS_KEY);
+  if (json != null) {
+    events = jsonDecode(json).cast<String>();
+  }
+  // Add new event.
+  events.insert(0, "$taskId@$timestamp [Headless]");
+  // Persist fetch events in SharedPreferences
+  prefs.setString(EVENTS_KEY, jsonEncode(events));
+
+  if (taskId == 'flutter_background_fetch') {
+    // TODO: THIS IS WHERE WE SHOULD PUT NOTIFICATION SCHEDULING LOGIC.
+
+    /* DISABLED:  uncomment to fire a scheduleTask in headlessTask.
+    BackgroundFetch.scheduleTask(TaskConfig(
+        taskId: "com.transistorsoft.customtask",
+        delay: 5000,
+        periodic: false,
+        forceAlarmManager: false,
+        stopOnTerminate: false,
+        enableHeadless: true
+    ));
+     */
+  }
+  BackgroundFetch.finish(taskId);
 }
 
 OutlineInputBorder getOutlineInputBorder({required Color color}) {
@@ -340,6 +394,7 @@ class DiurnalState extends State<Diurnal> {
   int _localPtr = 0;
   int _numBuilds = 0;
   final _storage = const FlutterSecureStorage();
+  List<String> _events = [];
 
   @override
   void initState() {
@@ -350,6 +405,7 @@ class DiurnalState extends State<Diurnal> {
     readPrivateKey();
     _notifications = getNotificationsPlugin();
     updateWorksheet();
+    initPlatformState();
     Future.delayed(const Duration(seconds: 10), () {
       Timer.periodic(THIRTY_SECS, (Timer t) => updateWorksheet());
     });
@@ -541,6 +597,76 @@ class DiurnalState extends State<Diurnal> {
         await _worksheet!.cells.cell(row: ptr, column: POINTER_COLUMN);
     // HTTP GET REQUEST.
     await newPointer.post(POINTER);
+  }
+
+  // Platform messages are asynchronous, so we initialize in an async method.
+  Future<void> initPlatformState() async {
+    // Load persisted fetch events from SharedPreferences
+    var prefs = await SharedPreferences.getInstance();
+    var json = prefs.getString(EVENTS_KEY);
+    if (json != null) {
+      setState(() {
+        _events = jsonDecode(json).cast<String>();
+      });
+    }
+
+    // Configure BackgroundFetch.
+    try {
+      var status = await BackgroundFetch.configure(
+          BackgroundFetchConfig(
+            minimumFetchInterval: 15,
+            stopOnTerminate: false,
+            enableHeadless: true,
+            requiresBatteryNotLow: false,
+            requiresCharging: false,
+            requiresStorageNotLow: false,
+            requiresDeviceIdle: false,
+            /*
+        forceAlarmManager: false,
+        startOnBoot: true,
+        requiredNetworkType: NetworkType.NONE,
+
+         */
+          ),
+          _onBackgroundFetch,
+          _onBackgroundFetchTimeout);
+      print('[BackgroundFetch] configure success: $status');
+      setState(() {});
+    } on Exception catch (e) {
+      print("[BackgroundFetch] configure ERROR: $e");
+    }
+
+    // If the widget was removed from the tree while the asynchronous platform
+    // message was in flight, we want to discard the reply rather than calling
+    // setState to update our non-existent appearance.
+    if (!mounted) return;
+  }
+
+  void _onBackgroundFetch(String taskId) async {
+    var prefs = await SharedPreferences.getInstance();
+    var timestamp = DateTime.now();
+    // This is the fetch-event callback.
+    print("[BackgroundFetch] Event received: $taskId");
+    setState(() {
+      _events.insert(0, "$taskId@${timestamp.toString()}");
+    });
+    // Persist fetch events in SharedPreferences
+    prefs.setString(EVENTS_KEY, jsonEncode(_events));
+
+    if (taskId == "flutter_background_fetch") {
+      // TODO: PUT NOTIFICATION SCHEDULNG LOGIC HERE.
+      await updateWorksheet();
+    }
+    // IMPORTANT:  You must signal completion of your fetch task or the OS can punish your app
+    // for taking too long in the background.
+    BackgroundFetch.finish(taskId);
+  }
+
+  /// This event fires shortly before your task is about to timeout.  You must
+  /// finish any outstanding work and call BackgroundFetch.finish(taskId).
+  void _onBackgroundFetchTimeout(String taskId) {
+    print("[BackgroundFetch] TIMEOUT: $taskId");
+    BackgroundFetch.finish(taskId);
   }
 
   // METHODS

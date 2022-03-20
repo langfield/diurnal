@@ -43,6 +43,8 @@ dependencies:
   firebase_messaging: ^11.2.11
   timezone: ^0.8.0
   flutter_native_timezone: ^2.0.0
+  background_fetch: ^1.0.3
+  shared_preferences: ^2.0.13
 
 dev_dependencies:
   flutter_test:
