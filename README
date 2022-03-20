@@ -1,8 +1,10 @@
 Usage
 -----
-When compiling for an android emulator, if you get a
-``LocationNotFoundException``, try setting the timezone manually within the
-android system settings.
+- When compiling for an android emulator, if you get a
+  ``LocationNotFoundException``, try setting the timezone manually within the
+  android system settings.
+- If heads-up notifications are not working in the android emulator, try
+  uninstalling the app, closing the emulator, and building again.
 
 
 

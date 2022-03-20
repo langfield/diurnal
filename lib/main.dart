@@ -385,7 +385,7 @@ class DiurnalState extends State<Diurnal> {
     _currentBlockIndex = getCurrentBlockIndex(now: now);
     print('Set current block index: ${_currentBlockIndex}');
     resetBlockTimer();
-    scheduleNotification();
+    scheduleNotifications();
     setState(() {});
   }
 
@@ -413,7 +413,7 @@ class DiurnalState extends State<Diurnal> {
     });
   }
 
-  Future<void> scheduleNotification() async {
+  Future<void> scheduleNotifications() async {
     if (_currentBlock == null) {
       print('Not scheduling notifications as _currentBlock is null');
       return;
@@ -423,35 +423,36 @@ class DiurnalState extends State<Diurnal> {
       return;
     }
 
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails('your channel id', 'your channel name',
+            channelDescription: 'your channel description',
+            importance: Importance.max,
+            priority: Priority.max,
+            ticker: 'ticker');
+    const IOSNotificationDetails iOSPlatformChannelSpecifics =
+        IOSNotificationDetails(subtitle: 'the subtitle');
+    const MacOSNotificationDetails macOSPlatformChannelSpecifics =
+        MacOSNotificationDetails(subtitle: 'the subtitle');
+    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+        iOS: iOSPlatformChannelSpecifics,
+        macOS: macOSPlatformChannelSpecifics);
+
     await _notifications!.cancelAll();
 
-    final List<List<Cell>> blocks = _stack!.sublist(_currentBlockIndex!);
-    for (final List<Cell> block in blocks) {
+    for (int i = _currentBlockIndex!; i < _stack!.length; i++) {
+      final List<Cell> block = _stack![i];
+
       String body = 'All done for today :)';
       if (block.isNotEmpty) body = block[TITLE].value;
-      print('Scheduling notification: ${body}');
 
       final now = DateTime.now();
       final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
       final notificationDateTime = tz.TZDateTime.from(blockEndTime, tz.local);
 
-      const AndroidNotificationDetails androidPlatformChannelSpecifics =
-          AndroidNotificationDetails('your channel id', 'your channel name',
-              channelDescription: 'your channel description',
-              importance: Importance.max,
-              priority: Priority.high,
-              ticker: 'ticker');
-      const IOSNotificationDetails iOSPlatformChannelSpecifics =
-          IOSNotificationDetails(subtitle: 'the subtitle');
-      const MacOSNotificationDetails macOSPlatformChannelSpecifics =
-          MacOSNotificationDetails(subtitle: 'the subtitle');
-      const NotificationDetails platformChannelSpecifics = NotificationDetails(
-          android: androidPlatformChannelSpecifics,
-          iOS: iOSPlatformChannelSpecifics,
-          macOS: macOSPlatformChannelSpecifics);
-
+      print('Scheduling notification: ${body} at ${notificationDateTime}');
       await _notifications!.zonedSchedule(
-          0, 'Diurnal', body, notificationDateTime, platformChannelSpecifics,
+          i, 'Diurnal', body, notificationDateTime, platformChannelSpecifics,
           androidAllowWhileIdle: true,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime);
