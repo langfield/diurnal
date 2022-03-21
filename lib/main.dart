@@ -979,7 +979,8 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
     var expForm = Expanded(child: form);
     var submitButton = TextButton(onPressed: submitKey, child: submit);
     var expSubmitButton = Expanded(child: submitButton);
-    var formColumn = Column(children: <Widget>[expForm, expSubmitButton]);
+    var paddedForm = Padding(padding: EdgeInsets.only(top: 100.0), child: expForm);
+    var formColumn = Column(children: <Widget>[paddedForm, expSubmitButton]);
 
     return Scaffold(body: formColumn);
   }
