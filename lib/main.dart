@@ -292,7 +292,9 @@ List<List<Cell>> getStackFromRows(
   print('Rows size: ${rows.length}');
   print('Looking for ptr: ${ptr}');
   final List<List<Cell>> stack = [];
-  for (int i = 0; i < rows.length - 1; i++) {
+  for (int i = 0; i < rows.length; i++) {
+    final String title = rows[i][TITLE].value;
+    print('Checking block: ${title}');
     final int row = rows[i][TITLE].row;
     if (row >= ptr + 1) {
       print('Found row: ${row} >= ptr + 1: ${ptr + 1}');
