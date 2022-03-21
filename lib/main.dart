@@ -486,9 +486,9 @@ class DiurnalState extends State<Diurnal> {
             priority: Priority.max,
             ticker: 'ticker');
     const IOSNotificationDetails iOSPlatformChannelSpecifics =
-        IOSNotificationDetails(subtitle: 'the subtitle');
+        IOSNotificationDetails();
     const MacOSNotificationDetails macOSPlatformChannelSpecifics =
-        MacOSNotificationDetails(subtitle: 'the subtitle');
+        MacOSNotificationDetails();
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
         android: androidPlatformChannelSpecifics,
         iOS: iOSPlatformChannelSpecifics,
@@ -499,8 +499,10 @@ class DiurnalState extends State<Diurnal> {
     for (int i = _currentBlockIndex!; i < _stack!.length; i++) {
       final List<Cell> block = _stack![i];
 
-      String body = 'All done for today :)';
-      if (block.isNotEmpty) body = block[TITLE].value;
+      if (block.isEmpty) continue;
+      final String title = block[TITLE].value;
+      final String mins = block[MINS].value;
+      final String body = '${mins}mins: ${title}';
 
       final now = DateTime.now();
       final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
@@ -979,7 +981,8 @@ class PrivateKeyFormRouteState extends State<PrivateKeyFormRoute> {
     var expForm = Expanded(child: form);
     var submitButton = TextButton(onPressed: submitKey, child: submit);
     var expSubmitButton = Expanded(child: submitButton);
-    var paddedForm = Padding(padding: EdgeInsets.only(top: 100.0), child: expForm);
+    var paddedForm =
+        Padding(padding: const EdgeInsets.only(top: 100.0), child: expForm);
     var formColumn = Column(children: <Widget>[paddedForm, expSubmitButton]);
 
     return Scaffold(body: formColumn);
