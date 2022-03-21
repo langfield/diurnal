@@ -505,8 +505,10 @@ class DiurnalState extends State<Diurnal> {
       final String body = '${mins}m: ${title}';
 
       final now = DateTime.now();
-      final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
-      final notificationDateTime = tz.TZDateTime.from(blockEndTime, tz.local);
+      final DateTime blockStartTime = getBlockStartTime(block: block, now: now);
+      final notificationDateTime = tz.TZDateTime.from(blockStartTime, tz.local);
+
+      if (blockStartTime.isBefore(now)) continue;
 
       print('Scheduling notification: ${body} at ${notificationDateTime}');
       await _notifications!.zonedSchedule(
