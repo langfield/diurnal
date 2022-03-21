@@ -502,7 +502,7 @@ class DiurnalState extends State<Diurnal> {
       if (block.isEmpty) continue;
       final String title = block[TITLE].value;
       final String mins = block[MINS].value;
-      final String body = '${mins}mins: ${title}';
+      final String body = '${mins}m: ${title}';
 
       final now = DateTime.now();
       final DateTime blockEndTime = getBlockEndTime(block: block, now: now);
