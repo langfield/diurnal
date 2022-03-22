@@ -29,7 +29,8 @@ import 'package:diurnal/SECRETS.dart' as secrets;
 
 const String KEY = 'PRIVATE_KEY';
 const String POINTER = '*';
-const int DAY_WIDTH = 7;
+const int BLOCK_WIDTH = 6;
+const int DAY_WIDTH = 8;
 const int DAY_HEIGHT = 74;
 const int DAY_START_ROW = 2;
 const int POINTER_COLUMN = 50;
@@ -42,7 +43,7 @@ const int WEIGHT = 2;
 const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
-const int TIME = 6;
+const int TIME = 7;
 
 /// SharedPreferences data key.
 const EVENTS_KEY = "fetch_events";
@@ -232,7 +233,7 @@ int getMinutesFromDays({required double days}) {
 
 DateTime getBlockStartTime({required List<Cell> block, required DateTime now}) {
   final String date = now.toString().split(' ')[0];
-  Cell daysCell = block[DAY_WIDTH - 1];
+  Cell daysCell = block[BLOCK_WIDTH];
   double days = double.parse(daysCell.value);
   int hours = getHoursFromDays(days: days);
   int mins = getMinutesFromDays(days: days);

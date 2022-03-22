@@ -1,5 +1,5 @@
-Usage
------
+Tips
+----
 - When compiling for an android emulator, if you get a
   ``LocationNotFoundException``, try setting the timezone manually within the
   android system settings.
@@ -7,6 +7,18 @@ Usage
   uninstalling the app, closing the emulator, and building again.
 - If emulator will not start, try opening 'File -> Project Structure -> Project
   Settings -> Modules'. Then right click on 'diurnal_android', and delete it.
+
+
+Workflow
+--------
+- Edit file
+- Run ``flutter format lib/``
+- List available devices ``flutter devices``
+- Compile and run (one of the following):
+    - (ios simulator)   ``open -a Simulator && flutter run``
+    - (ios device)      open xcode and then run ``flutter run``
+    - (chrome)          ``flutter run -d chrome``
+    - (linux desktop)   ``flutter run -d linux``
 
 
 

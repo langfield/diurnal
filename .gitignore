@@ -45,5 +45,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Custom
 lib/SECRETS.dart
 lib/firebase_options.dart
+
+COMMIT
