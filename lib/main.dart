@@ -28,7 +28,7 @@ import 'package:diurnal/SECRETS.dart' as secrets;
 // CONSTANTS
 
 const String KEY = 'PRIVATE_KEY';
-const String POINTER = '*';
+const String POINTER_CHAR = '*';
 const int BLOCK_WIDTH = 6;
 const int DAY_WIDTH = 8;
 const int DAY_HEIGHT = 74;
@@ -43,6 +43,7 @@ const int WEIGHT = 2;
 const int ACTUAL = 3;
 const int MINS = 4;
 const int LATE = 5;
+const int POINTER = 6;
 const int TIME = 7;
 
 /// SharedPreferences data key.
@@ -205,14 +206,15 @@ bool isValidPrivateKey({required String? privateKey}) {
 }
 
 List<List<Cell>> filterRows({required List<List<Cell>> rows}) {
-  rows = rows.where((block) => !hasEmptyFields(block: block)).toList();
+  rows = rows.where((block) => !blockHasEmptyFields(block: block)).toList();
   rows = rows.where((block) => !isDone(block: block)).toList();
   return rows;
 }
 
-/// Return true if any cells are empty strings.
-bool hasEmptyFields({required List<Cell> block}) {
-  for (final Cell cell in block) {
+/// Return true if any block cells (so not the pointer column or the time
+/// column) are empty strings.
+bool blockHasEmptyFields({required List<Cell> block}) {
+  for (final Cell cell in block.sublist(0, BLOCK_WIDTH)) {
     if (cell.value == '') {
       return true;
     }
@@ -233,7 +235,7 @@ int getMinutesFromDays({required double days}) {
 
 DateTime getBlockStartTime({required List<Cell> block, required DateTime now}) {
   final String date = now.toString().split(' ')[0];
-  Cell daysCell = block[BLOCK_WIDTH];
+  Cell daysCell = block[TIME];
   double days = double.parse(daysCell.value);
   int hours = getHoursFromDays(days: days);
   int mins = getMinutesFromDays(days: days);
@@ -254,12 +256,18 @@ DateTime getBlockEndTime({required List<Cell> block, required DateTime now}) {
 }
 
 bool isDone({required List<Cell> block}) {
+  print('Checking if block "${block[TITLE].value}" is done');
   final String doneString = block[DONE].value;
+  print('Done (str): ${doneString}');
   final double doneDecimal = double.parse(doneString);
+  print('Done (decimal): ${doneDecimal}');
   final int done = doneDecimal.floor();
+  print('Done (int): ${done}');
   if (done == 1) {
+    print('Returning true (== 1)');
     return true;
   }
+  print('Returning false (!= 1)');
   return false;
 }
 
@@ -557,17 +565,17 @@ class DiurnalState extends State<Diurnal> {
     print('Getting stack...');
     // HTTP GET REQUEST.
     List<List<Cell>> rows = await getRows(now: now);
-    List<List<Cell>>? nonemptys;
-    nonemptys = rows.where((block) => !hasEmptyFields(block: block)).toList();
+    List<List<Cell>>? nonemptys =
+        rows.where((block) => !blockHasEmptyFields(block: block)).toList();
     rows = filterRows(rows: rows);
     // HTTP GET REQUEST.
-    final int oldPtr = await getPointer();
+    final int oldPtr = await getPointer(now: now);
     int newPtr = computeNewPointer(rows: nonemptys, now: now);
     newPtr = max(oldPtr, newPtr);
     newPtr = max(newPtr, _localPtr);
     print('oldPtr: ${oldPtr}  newPtr: ${newPtr}');
     // HTTP GET REQUEST.
-    if (oldPtr < newPtr) await setPointer(ptr: newPtr);
+    if (oldPtr < newPtr) await setPointer(ptr: newPtr, now: now);
     List<List<Cell>> stack = getStackFromRows(rows: rows, ptr: newPtr);
     return stack;
   }
@@ -583,27 +591,39 @@ class DiurnalState extends State<Diurnal> {
     return rows;
   }
 
-  Future<int> getPointer() async {
+  Future<int> getPointer({required DateTime now}) async {
+    final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
+    final int pointerColumn = startColumn + POINTER;
+
     // HTTP GET REQUEST.
-    final List<Cell>? column = await _worksheet!.cells.column(POINTER_COLUMN,
+    final List<Cell>? column = await _worksheet!.cells.column(pointerColumn,
         fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
-    for (final Cell cell in column!) {
+
+    // Iterate bottom-up to find the last starred row.
+    for (final Cell cell in column!.reversed.toList()) {
       if (cell.value == '*') {
         return cell.row;
       }
     }
+
+    // If there are none, we return the top row.
     return POINTER_COLUMN_START_ROW;
   }
 
-  Future<void> setPointer({required int ptr}) async {
+  Future<void> setPointer({required int ptr, required DateTime now}) async {
+    final int startColumn = ((now.weekday - 1) * DAY_WIDTH) + 1;
+    final int pointerColumn = startColumn + POINTER;
+
     // HTTP GET REQUEST.
-    await _worksheet!.clearColumn(POINTER_COLUMN,
+    await _worksheet!.clearColumn(pointerColumn,
         fromRow: POINTER_COLUMN_START_ROW, length: DAY_HEIGHT);
-    // HTTP GET REQUEST.
-    Cell newPointer =
-        await _worksheet!.cells.cell(row: ptr, column: POINTER_COLUMN);
-    // HTTP GET REQUEST.
-    await newPointer.post(POINTER);
+    for (int i = POINTER_COLUMN_START_ROW; i <= ptr; i++) {
+      // HTTP GET REQUEST.
+      Cell newPointer =
+          await _worksheet!.cells.cell(row: i, column: pointerColumn);
+      // HTTP GET REQUEST.
+      await newPointer.post(POINTER_CHAR);
+    }
   }
 
   // Platform messages are asynchronous, so we initialize in an async method.
