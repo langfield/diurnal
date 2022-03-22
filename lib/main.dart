@@ -256,18 +256,12 @@ DateTime getBlockEndTime({required List<Cell> block, required DateTime now}) {
 }
 
 bool isDone({required List<Cell> block}) {
-  print('Checking if block "${block[TITLE].value}" is done');
   final String doneString = block[DONE].value;
-  print('Done (str): ${doneString}');
   final double doneDecimal = double.parse(doneString);
-  print('Done (decimal): ${doneDecimal}');
   final int done = doneDecimal.floor();
-  print('Done (int): ${done}');
   if (done == 1) {
-    print('Returning true (== 1)');
     return true;
   }
-  print('Returning false (!= 1)');
   return false;
 }
 
