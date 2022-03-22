@@ -27,16 +27,24 @@ import 'package:diurnal/SECRETS.dart' as secrets;
 
 // CONSTANTS
 
+// Used as the key for the google service account private key in
+// ``flutter_secure_storage``'s on-device key-value store.
 const String KEY = 'PRIVATE_KEY';
+
+// Character used to denote already-filled-out blocks. The 'pointer' location
+// is the location of the latest block with this character.
 const String POINTER_CHAR = '*';
 const int BLOCK_WIDTH = 6;
 const int DAY_WIDTH = 8;
 const int DAY_HEIGHT = 74;
+
+// 1-indexed, inclusive indices.
 const int DAY_START_ROW = 2;
 const int POINTER_COLUMN = 50;
 const int POINTER_COLUMN_START_ROW = 1;
 const int DAY_END_ROW = DAY_START_ROW + DAY_HEIGHT - 1;
 
+// 0-indexed, day-relative column indices.
 const int TITLE = 0;
 const int DONE = 1;
 const int WEIGHT = 2;
@@ -50,6 +58,9 @@ const int TIME = 7;
 const EVENTS_KEY = "fetch_events";
 
 const double FONT_SIZE = 15.0;
+
+// Time allowed to pass since block end date before we automatically mark a
+// block as FAILED.
 const Duration LEEWAY = Duration(minutes: 1080);
 const Duration ONE_MINUTE = Duration(minutes: 1);
 const Duration THIRTY_SECS = Duration(seconds: 30);
@@ -60,6 +71,7 @@ const BorderRadius RADIUS = BorderRadius.all(Radius.circular(0.0));
 const Color TRANSLUCENT_RED = Color.fromRGBO(255, 0, 0, 0.7);
 const Color TRANSLUCENT_WHITE = Color.fromRGBO(255, 255, 255, 0.7);
 
+// Used to style to google service account private key form.
 final formFieldDecoration = InputDecoration(
   errorBorder: getOutlineInputBorder(color: TRANSLUCENT_RED),
   focusedErrorBorder: getOutlineInputBorder(color: Colors.red),
@@ -82,7 +94,7 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 /// Streams are created so that app can respond to notification-related events
-/// since the plugin is initialised in the `main` function
+/// since the plugin is initialised in the `main` function.
 final BehaviorSubject<ReceivedNotification> didReceiveLocalNotificationSubject =
     BehaviorSubject<ReceivedNotification>();
 
@@ -109,20 +121,25 @@ String? selectedNotificationPayload;
 
 // FUNCTIONS
 
-// Run the main app.
+/// Initialize things and run main app, starting with the ``TopLevel`` widget.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Timezone initialization boilerplate for scheduling notifications.
   final String? timeZoneName = await FlutterNativeTimezone.getLocalTimezone();
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation(timeZoneName!));
+
+  // Run the main app.
   runApp(const TopLevel());
 
   // Register to receive BackgroundFetch events after app is terminated.
-  // Requires {stopOnTerminate: false, enableHeadless: true}
+  // Requires {stopOnTerminate: false, enableHeadless: true}.
   BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
 }
 
-/// This "Headless Task" is run when app is terminated.
+/// This "Headless Task" is run when app is terminated. It currently does
+/// nothing.
 void backgroundFetchHeadlessTask(HeadlessTask task) async {
   var taskId = task.taskId;
   var timeout = task.timeout;
@@ -133,39 +150,29 @@ void backgroundFetchHeadlessTask(HeadlessTask task) async {
   }
 
   print("[BackgroundFetch] Headless event received: $taskId");
-
   var timestamp = DateTime.now();
-
   var prefs = await SharedPreferences.getInstance();
 
-  // Read fetch_events from SharedPreferences
+  // Read ``fetch_events`` from SharedPreferences.
   var events = <String>[];
   var json = prefs.getString(EVENTS_KEY);
   if (json != null) {
     events = jsonDecode(json).cast<String>();
   }
+
   // Add new event.
   events.insert(0, "$taskId@$timestamp [Headless]");
-  // Persist fetch events in SharedPreferences
+
+  // Persist fetch events in SharedPreferences.
   prefs.setString(EVENTS_KEY, jsonEncode(events));
 
   if (taskId == 'flutter_background_fetch') {
     // TODO: THIS IS WHERE WE SHOULD PUT NOTIFICATION SCHEDULING LOGIC.
-
-    /* DISABLED:  uncomment to fire a scheduleTask in headlessTask.
-    BackgroundFetch.scheduleTask(TaskConfig(
-        taskId: "com.transistorsoft.customtask",
-        delay: 5000,
-        periodic: false,
-        forceAlarmManager: false,
-        stopOnTerminate: false,
-        enableHeadless: true
-    ));
-     */
   }
   BackgroundFetch.finish(taskId);
 }
 
+/// Get a border for the google service account private key form.
 OutlineInputBorder getOutlineInputBorder({required Color color}) {
   return OutlineInputBorder(
     borderRadius: RADIUS,
@@ -173,6 +180,7 @@ OutlineInputBorder getOutlineInputBorder({required Color color}) {
   );
 }
 
+/// Get global Scaffold theme.
 ThemeData getTheme({required BuildContext context}) {
   return ThemeData(
       scaffoldBackgroundColor: Colors.black,
@@ -191,7 +199,7 @@ GSheets getGSheets({required String privateKey}) {
   return GSheets(credentials);
 }
 
-// Validate private key by attempting to construct ``GSheets`` instance.
+/// Validate private key by attempting to construct ``GSheets`` instance.
 bool isValidPrivateKey({required String? privateKey}) {
   if (privateKey == null) {
     return false;
@@ -205,6 +213,7 @@ bool isValidPrivateKey({required String? privateKey}) {
   }
 }
 
+/// Filter-out empty blocks and completed blocks.
 List<List<Cell>> filterRows({required List<List<Cell>> rows}) {
   rows = rows.where((block) => !blockHasEmptyFields(block: block)).toList();
   rows = rows.where((block) => !isDone(block: block)).toList();
