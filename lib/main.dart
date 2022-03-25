@@ -54,6 +54,8 @@ const int LATE = 5;
 const int POINTER = 6;
 const int TIME = 7;
 
+final DateTime berlinWallFellDate = DateTime.utc(1989, 11, 9);
+
 /// SharedPreferences data key.
 const EVENTS_KEY = "fetch_events";
 
@@ -409,6 +411,7 @@ class DiurnalState extends State<Diurnal> {
   int _numBuilds = 0;
   final _storage = const FlutterSecureStorage();
   List<String> _events = [];
+  DateTime _lastUpdateTime = berlinWallFellDate;
 
   @override
   void initState() {
@@ -446,8 +449,20 @@ class DiurnalState extends State<Diurnal> {
     print('Updating worksheet...');
     if (_key == null) return;
     if (_worksheet == null) return;
+
     final now = DateTime.now();
 
+    // If we have already made at least one update, and the day of the month
+    // has changed since the last update (i.e. the hour of midnight occurred
+    // between the last update and the current time), then we reset
+    // ``_localPtr`` to 0.
+    if (_lastUpdateTime != berlinWallFellDate &&
+        _lastUpdateTime.day != now.day) {
+      _localPtr = 0;
+    }
+    _lastUpdateTime = now;
+
+    // Update remote pointer.
     // HTTP GET REQUEST.
     _stack = await getStack(now: now);
 
@@ -916,8 +931,9 @@ class DiurnalState extends State<Diurnal> {
     final int hourOffset = now.timeZoneOffset.inHours;
     String offset = '${hourOffset}';
     if (hourOffset >= 0) offset = '+${offset}';
-    final Widget timezone = Text('${now.timeZoneName}${offset}');
-    final List<Widget> blockTimeWidgets = [blockTimes, timezone];
+    final Widget timezone = Text('${now.timeZoneName}');
+    final Widget gmtOffset = Text('GMT${offset}');
+    final List<Widget> blockTimeWidgets = [blockTimes, gmtOffset, timezone];
 
     final List<Widget> leftBlockWidgets = [blockTitle, blockProps, builds];
 
