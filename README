@@ -9,6 +9,38 @@ Tips
   Settings -> Modules'. Then right click on 'diurnal_android', and delete it.
 
 
+TODO
+====
+- Change the 'pass'/'fail' buttons into proportions 0.0, 0.5, 1.0. There should
+  be a button for 'late' as well.
+- Add buttons for what task you did instead. So you are first prompted for the
+  completion ratio, and then maybe whether the task was late, and then the
+  composition of what you actually did during the block. This would be a big
+  list of buttons, like 'Sleep', 'Errand', etc. And it should also include the
+  text of what was *supposed* to be done during the block.
+- Somewhere in 'passOrFail()', we should write to the pointer column, instead
+  of having to wait for an 'updateWorksheet()' call. We call 'setPointer()' in
+  here (which should probably be refactored), and it isn't super reliable. But
+  it wouldn't need to be if we just updated the pointer column whenever the
+  user enters data.
+
+
+Activities that may become buttons in diurnal, so that the user may quickly
+indicate what they did instead of the scheduled task.
+
+- Read
+- Shop
+- Clean
+- Sleep
+- Event
+- Errand
+- Nothing
+- Computer
+- Internet
+- Socialize
+- Logistics
+
+
 Workflow
 --------
 - Edit file
@@ -19,9 +51,6 @@ Workflow
     - (ios device)      open xcode and then run ``flutter run``
     - (chrome)          ``flutter run -d chrome``
     - (linux desktop)   ``flutter run -d linux``
-
-
-
 
 
 Let's talk about screens. When the user gets a notification, it contains the
