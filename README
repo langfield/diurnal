@@ -23,6 +23,7 @@ TODO
   here (which should probably be refactored), and it isn't super reliable. But
   it wouldn't need to be if we just updated the pointer column whenever the
   user enters data.
+- isDone() has a bug. Should check if > 0, not if == 1.
 
 
 Activities that may become buttons in diurnal, so that the user may quickly
